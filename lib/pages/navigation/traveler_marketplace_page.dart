@@ -6,7 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:skyporters/models/trip.dart'; 
 import 'package:skyporters/models/travler_product.dart';
 import 'package:skyporters/pages/TravelDetailsPage.dart';
-import 'package:skyporters/pages/post_trip_page.dart';
+import 'package:skyporters/pages/passenger/post_trip_page.dart';
 import 'package:skyporters/pages/travler_product.dart'; // Contains PostProductPage
 import 'package:skyporters/utils/api_constants.dart';
 import 'package:skyporters/widgets/passenger_card.dart';

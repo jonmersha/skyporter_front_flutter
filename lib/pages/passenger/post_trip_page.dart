@@ -3,7 +3,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:intl/intl.dart';
-import '../utils/api_constants.dart';
+import '../../utils/api_constants.dart';
 
 class PostTripPage extends StatefulWidget {
   const PostTripPage({super.key});
