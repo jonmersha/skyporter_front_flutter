@@ -4,7 +4,6 @@ import 'package:skyporters/pages/navigation/main_navigation_page.dart';
 
 // Internal Imports
 import 'utils/constants.dart';
-import 'pages/toberemoved/dashboard_page.dart';
 
 void main() {
   // Ensure Flutter bindings are initialized before any API calls
@@ -73,7 +72,7 @@ class SkyPortersApp extends StatelessWidget {
       ),
 
       // --- ROUTING ---
-      home:  const MainNavigationPage(),
+      home: const MainNavigationPage(),
     );
   }
 }

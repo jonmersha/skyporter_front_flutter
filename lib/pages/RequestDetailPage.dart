@@ -1,46 +1,120 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
-import '../models/customer_request_model.dart';
+import 'package:skyporters/models/Customer.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:skyporters/utils/api_constants.dart';
 
-class RequestDetailPage extends StatelessWidget {
+class RequestDetailPage extends StatefulWidget {
   final CustomerRequest request;
   const RequestDetailPage({super.key, required this.request});
 
-  Future<void> _launch(String url) async {
-    final Uri uri = Uri.parse(url);
-    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-      debugPrint("Could not launch $url");
+  @override
+  State<RequestDetailPage> createState() => _RequestDetailPageState();
+}
+
+class _RequestDetailPageState extends State<RequestDetailPage> {
+  final storage = const FlutterSecureStorage();
+  final _messageController = TextEditingController();
+  bool _isSubmitting = false;
+
+  // --- Logic: Create Enquiry based on your CURL ---
+  Future<void> _createEnquiry() async {
+    if (_messageController.text.trim().isEmpty) return;
+
+    setState(() => _isSubmitting = true);
+    try {
+      String? token = await storage.read(key: 'access');
+
+      final response = await http.post(
+        Uri.parse("${ApiConstants.baseUrl}/api/enquiries/"),
+        headers: {
+          ...ApiConstants.authHeader(token!),
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+        },
+        body: jsonEncode({
+          "receiver": widget.request.customer, // The User ID from model
+          "request": widget.request.id, // The Request ID from model
+          "trip": null, // Explicitly null per your model
+          "product": null, // Explicitly null per your model
+          "message": _messageController.text.trim(),
+        }),
+      );
+
+      if (response.statusCode == 201) {
+        if (mounted) {
+          Navigator.pop(context); // Close sheet
+          _messageController.clear();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("Enquiry sent successfully!"),
+              backgroundColor: Colors.green,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      } else {
+        debugPrint("Error Response: ${response.body}");
+      }
+    } catch (e) {
+      debugPrint("Connection Error: $e");
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
     }
   }
 
-  // --- NEW: DEAL CREATION LOGIC ---
-  void _createDealOffer(BuildContext context) {
-    showDialog(
+  void _showEnquirySheet() {
+    showModalBottomSheet(
       context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text("Offer to Carry"),
-        content: Text("Do you want to offer to carry '${request.productName}' to ${request.to}? This will notify the sender to review your profile."),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Cancel"),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              // TODO: Perform POST request to /api/deals/ in Django
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text("Offer sent to the sender!"),
-                  backgroundColor: Colors.green,
-                ),
-              );
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-            child: const Text("Confirm Offer", style: TextStyle(color: Colors.white)),
-          ),
-        ],
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
+        ),
+        padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+            left: 20,
+            right: 20,
+            top: 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text("Send Enquiry",
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 15),
+            TextField(
+              controller: _messageController,
+              maxLines: 4,
+              decoration: InputDecoration(
+                hintText: "Tell the customer why you are a good fit...",
+                filled: true,
+                fillColor: Colors.grey[100],
+                border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none),
+              ),
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: _isSubmitting ? null : _createEnquiry,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.indigo[900],
+                minimumSize: const Size(double.infinity, 55),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+              ),
+              child: _isSubmitting
+                  ? const CircularProgressIndicator(color: Colors.white)
+                  : const Text("SEND ENQUIRY",
+                      style: TextStyle(
+                          color: Colors.white, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -48,50 +122,38 @@ class RequestDetailPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Item Request Details")),
+      backgroundColor: Colors.grey[50],
+      appBar: AppBar(
+        title: const Text("Request Details"),
+        backgroundColor: Colors.indigo[900],
+        foregroundColor: Colors.white,
+      ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildRewardCard(),
-            const SizedBox(height: 24),
-            const Text("Item Information",
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
-            _infoTile("Product", request.productName, Icons.shopping_bag),
-            _infoTile("Route", "${request.from} ➔ ${request.to}", Icons.map),
-            _infoTile("Weight", "${request.weight} kg", Icons.monitor_weight),
-            _infoTile("Type", request.isPurchaseRequired ? "Buy & Deliver" : "Delivery Only", Icons.info),
-
-            if (request.isPurchaseRequired)
-              _infoTile("Item Price", "\$${request.itemPrice}", Icons.attach_money),
-
-            const SizedBox(height: 32),
-
-            // MAIN ACTION: CREATE DEAL
-            ElevatedButton(
-              onPressed: () => _createDealOffer(context),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green[700],
-                minimumSize: const Size(double.infinity, 55),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-              ),
-              child: const Text("Offer to Carry This Item",
-                  style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-            ),
-
-            const SizedBox(height: 12),
-
-            // SECONDARY ACTION: CHAT
-            OutlinedButton.icon(
-              onPressed: () => _launch("https://wa.me/${request.contact.replaceAll(' ', '')}"),
-              icon: const Icon(Icons.chat, color: Colors.indigo),
-              label: const Text("Chat with Sender"),
-              style: OutlinedButton.styleFrom(
-                minimumSize: const Size(double.infinity, 55),
-                side: const BorderSide(color: Colors.indigo),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+            _buildHero(),
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildSectionTitle("Travel Plan"),
+                  _infoCard([
+                    _infoRow(Icons.flight_takeoff, "Pick up",
+                        widget.request.fromCity),
+                    _infoRow(
+                        Icons.flight_land, "Deliver to", widget.request.toCity),
+                    _infoRow(
+                        Icons.category, "Category", widget.request.category),
+                  ]),
+                  const SizedBox(height: 20),
+                  _buildSectionTitle("Description"),
+                  Text(widget.request.description,
+                      style: TextStyle(
+                          fontSize: 15, color: Colors.grey[700], height: 1.6)),
+                  const SizedBox(height: 40),
+                  _buildButtons(),
+                ],
               ),
             ),
           ],
@@ -100,54 +162,116 @@ class RequestDetailPage extends StatelessWidget {
     );
   }
 
-  Widget _buildRewardCard() {
+  Widget _buildHero() {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF1A237E), Color(0xFF3949AB)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.indigo.withOpacity(0.3),
-            blurRadius: 10,
-            offset: const Offset(0, 5),
-          )
-        ],
+        color: Colors.indigo[900],
+        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(30)),
       ),
+      padding: const EdgeInsets.all(30),
       child: Column(
         children: [
-          const Text("Your Potential Earnings",
-              style: TextStyle(color: Colors.white70, fontSize: 14)),
-          const SizedBox(height: 8),
-          Text("\$${request.deliveryReward}",
-              style: const TextStyle(color: Colors.white, fontSize: 38, fontWeight: FontWeight.bold)),
-          const Text("Delivery Reward",
-              style: TextStyle(color: Colors.white, letterSpacing: 1.2)),
+          Text(widget.request.title,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold)),
+          const SizedBox(height: 25),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _heroItem(
+                  "Reward",
+                  "\$${widget.request.budget.toStringAsFixed(0)}",
+                  Colors.greenAccent),
+              _heroItem("Timeline", widget.request.timelineStatus,
+                  Colors.orangeAccent),
+            ],
+          ),
         ],
       ),
     );
   }
 
-  Widget _infoTile(String label, String val, IconData icon) {
-    return Card(
-      elevation: 0,
-      color: Colors.grey[100],
-      margin: const EdgeInsets.only(bottom: 8),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: Colors.white,
-          child: Icon(icon, color: Colors.indigo, size: 20),
-        ),
-        title: Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-        subtitle: Text(val,
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black)),
+  Widget _heroItem(String label, String val, Color valColor) {
+    return Column(
+      children: [
+        Text(label,
+            style: const TextStyle(color: Colors.white60, fontSize: 12)),
+        Text(val,
+            style: TextStyle(
+                color: valColor, fontSize: 20, fontWeight: FontWeight.bold)),
+      ],
+    );
+  }
+
+  Widget _infoCard(List<Widget> children) {
+    return Container(
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(15),
+          border: Border.all(color: Colors.grey[200]!)),
+      child: Column(children: children),
+    );
+  }
+
+  Widget _infoRow(IconData icon, String label, String val) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: Colors.indigo[900]),
+          const SizedBox(width: 15),
+          Text("$label: ", style: const TextStyle(color: Colors.grey)),
+          Text(val, style: const TextStyle(fontWeight: FontWeight.bold)),
+        ],
       ),
+    );
+  }
+
+  Widget _buildSectionTitle(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Text(title,
+          style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.bold,
+              color: Colors.indigo[900])),
+    );
+  }
+
+  Widget _buildButtons() {
+    return Column(
+      children: [
+        ElevatedButton(
+          onPressed: _showEnquirySheet,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.indigo[900],
+            minimumSize: const Size(double.infinity, 55),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+          child: const Text("SEND ENQUIRY",
+              style:
+                  TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        ),
+        const SizedBox(height: 15),
+        OutlinedButton(
+          onPressed: () {}, // Formal Deal Logic
+          style: OutlinedButton.styleFrom(
+            minimumSize: const Size(double.infinity, 55),
+            side: BorderSide(color: Colors.indigo[900]!),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+          child: Text("MAKE DIRECT OFFER",
+              style: TextStyle(
+                  color: Colors.indigo[900], fontWeight: FontWeight.bold)),
+        ),
+      ],
     );
   }
 }

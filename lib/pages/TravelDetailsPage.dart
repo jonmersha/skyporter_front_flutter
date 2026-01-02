@@ -1,51 +1,110 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
-import '../models/passenger_post_model.dart';
+import 'package:skyporters/models/trip.dart'; // Ensure correct path
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:skyporters/utils/api_constants.dart';
 
-class TravelDetailsPage extends StatelessWidget {
-  final PassengerPost post;
-  const TravelDetailsPage({super.key, required this.post});
+class TravelDetailsPage extends StatefulWidget {
+  final Trip trip;
+  const TravelDetailsPage({super.key, required this.trip});
 
-  Future<void> _launch(String url) async {
-    final Uri uri = Uri.parse(url);
-    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-      debugPrint("Could not launch $url");
+  @override
+  State<TravelDetailsPage> createState() => _TravelDetailsPageState();
+}
+
+class _TravelDetailsPageState extends State<TravelDetailsPage> {
+  final storage = const FlutterSecureStorage();
+  bool _isSending = false;
+
+  Future<void> _sendEnquiry(BuildContext context, String message) async {
+    setState(() => _isSending = true);
+    try {
+      String? token = await storage.read(key: 'access');
+
+      if (token == null) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Please login to contact the traveler")),
+          );
+        }
+        return;
+      }
+
+      final response = await http.post(
+        Uri.parse("${ApiConstants.baseUrl}/api/enquiries/"),
+        headers: {
+          ...ApiConstants.authHeader(token),
+          "Content-Type": "application/json",
+        },
+        body: jsonEncode({
+          "receiver": widget.trip.travelerId,
+          "trip": widget.trip.id,
+          "message": message,
+        }),
+      );
+
+      if (response.statusCode == 201) {
+        if (context.mounted) {
+          Navigator.pop(context); 
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Enquiry Sent!"), backgroundColor: Colors.green),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint("Enquiry Error: $e");
+    } finally {
+      if (mounted) setState(() => _isSending = false);
     }
   }
 
-  // --- NEW: DEAL CREATION LOGIC ---
-  void _initiateDeal(BuildContext context) {
+  void _showEnquirySheet() {
+    final TextEditingController messageController = TextEditingController(
+      text: "Hi, I'm interested in your trip to ${widget.trip.destinationCity}. I have an item I'd like you to carry."
+    );
+
     showModalBottomSheet(
       context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
-      ),
-      builder: (context) => Padding(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text("Create Deal Request",
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
-            Text("Request ${post.travelerName} to carry your item. They will review your request before the deal is confirmed."),
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: () {
-                // TODO: POST to /api/deals/ in Django
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("Deal Request Sent!"), backgroundColor: Colors.green),
-                );
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF1A237E),
-                minimumSize: const Size(double.infinity, 50),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(25))),
+      builder: (context) => StatefulBuilder( // Added to handle loading state inside sheet
+        builder: (context, setSheetState) => Padding(
+          padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).viewInsets.bottom,
+              top: 24, left: 24, right: 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text("Contact Traveler", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 16),
+              TextField(
+                controller: messageController,
+                maxLines: 4,
+                decoration: InputDecoration(
+                  hintText: "Enter your message...",
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
               ),
-              child: const Text("Confirm & Send Request", style: TextStyle(color: Colors.white)),
-            ),
-          ],
+              const SizedBox(height: 24),
+              ElevatedButton(
+                onPressed: _isSending ? null : () async {
+                  setSheetState(() => _isSending = true);
+                  await _sendEnquiry(context, messageController.text);
+                  setSheetState(() => _isSending = false);
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF1A237E),
+                  minimumSize: const Size(double.infinity, 50),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                child: _isSending 
+                  ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                  : const Text("Send Enquiry", style: TextStyle(color: Colors.white)),
+              ),
+              const SizedBox(height: 20),
+            ],
+          ),
         ),
       ),
     );
@@ -54,7 +113,7 @@ class TravelDetailsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Traveler Details")),
+      appBar: AppBar(title: const Text("Trip Details")),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -63,53 +122,44 @@ class TravelDetailsPage extends StatelessWidget {
             _buildHeader(),
             const SizedBox(height: 24),
             _buildFlightInfoCard(),
-            const SizedBox(height: 24),
-            const Text("Pricing Policy",
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
-            _buildPriceRow("Standard Weight", "\$${post.pricePerKg}/kg", Icons.scale),
-            _buildPriceRow("Laptops", "\$${post.laptopFee} per item", Icons.laptop_mac),
-            _buildPriceRow("Smartphones", "\$${post.smartphoneFee} per item", Icons.phone_iphone),
             const SizedBox(height: 32),
-
-            // MAIN ACTION: CREATE DEAL
+            const Text("Carrying Fees", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 16),
+            _buildPriceRow("Laptops", "\$${widget.trip.laptopFee}", Icons.laptop),
+            _buildPriceRow("Mobile Phones", "\$${widget.trip.mobileFee}", Icons.phone_android),
+            _buildPriceRow("Cosmetics", "\$${widget.trip.cosmeticFee}", Icons.face),
+            _buildPriceRow("General Items", "\$${widget.trip.otherFee}", Icons.inventory_2),
+            const SizedBox(height: 40),
             ElevatedButton(
-              onPressed: () => _initiateDeal(context),
+              onPressed: _showEnquirySheet,
               style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.indigo[900],
+                  backgroundColor: const Color(0xFF1A237E),
                   minimumSize: const Size(double.infinity, 55),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))
-              ),
-              child: const Text("Book for My Item",
-                  style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
+              child: const Text("Request Transport", style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
             ),
-
-            const SizedBox(height: 12),
-            _buildContactSection(),
           ],
         ),
       ),
     );
   }
 
-  // --- UI HELPER METHODS ---
-
   Widget _buildHeader() {
     return Row(
       children: [
-        const CircleAvatar(
-            radius: 30,
-            backgroundColor: Color(0xFF1A237E),
-            child: Icon(Icons.person, color: Colors.white)
-        ),
+        const CircleAvatar(radius: 30, backgroundColor: Color(0xFF1A237E), child: Icon(Icons.person, color: Colors.white)),
         const SizedBox(width: 15),
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(post.travelerName,
-                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-            const Text("Verified Traveler ✅",
-                style: TextStyle(color: Colors.green, fontSize: 13)),
+            Text(widget.trip.travelerName, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            const Row(
+              children: [
+                Icon(Icons.verified, color: Colors.blue, size: 16),
+                SizedBox(width: 4),
+                Text("Verified Traveler", style: TextStyle(color: Colors.blue, fontSize: 13)),
+              ],
+            ),
           ],
         ),
       ],
@@ -120,7 +170,7 @@ class TravelDetailsPage extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A237E),
+        gradient: const LinearGradient(colors: [Color(0xFF1A237E), Color(0xFF3949AB)]),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Column(
@@ -128,17 +178,17 @@ class TravelDetailsPage extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _flightCol("From", post.from),
-              const Icon(Icons.arrow_forward, color: Colors.white54),
-              _flightCol("To", post.to),
+              _flightCol("From", widget.trip.departureCity),
+              const Icon(Icons.flight_takeoff, color: Colors.white54),
+              _flightCol("To", widget.trip.destinationCity),
             ],
           ),
           const Divider(color: Colors.white24, height: 30),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _flightCol("Flight Date", post.date),
-              _flightCol("Available", "${post.availableKg} kg"),
+              _flightCol("Arrival", widget.trip.arrivalDate.toString().split(' ')[0]),
+              _flightCol("Status", widget.trip.isActive ? "Active" : "Closed"),
             ],
           ),
         ],
@@ -151,44 +201,16 @@ class TravelDetailsPage extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(label, style: const TextStyle(color: Colors.white70, fontSize: 12)),
-        Text(val, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        Text(val, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
       ],
     );
   }
 
   Widget _buildPriceRow(String label, String price, IconData icon) {
     return ListTile(
-      leading: Icon(icon, color: Colors.indigo),
+      leading: Icon(icon, color: Colors.indigo[900]),
       title: Text(label),
-      trailing: Text(price,
-          style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo)),
-    );
-  }
-
-  Widget _buildContactSection() {
-    return Column(
-      children: [
-        ElevatedButton.icon(
-          onPressed: () => _launch("https://wa.me/${post.contact.replaceAll(' ', '')}"),
-          icon: const Icon(Icons.chat),
-          label: const Text("Chat on WhatsApp"),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF25D366),
-            minimumSize: const Size(double.infinity, 50),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
-        ),
-        const SizedBox(height: 12),
-        OutlinedButton.icon(
-          onPressed: () => _launch("tel:${post.contact}"),
-          icon: const Icon(Icons.phone),
-          label: const Text("Call Directly"),
-          style: OutlinedButton.styleFrom(
-            minimumSize: const Size(double.infinity, 50),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
-        ),
-      ],
+      trailing: Text(price, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green, fontSize: 16)),
     );
   }
 }
