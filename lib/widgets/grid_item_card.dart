@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:skyporters/models/trip.dart'; // Using the updated Trip model
+import 'package:skyporters/models/Trip.dart';
+// import 'package:skyporters/models/trip.dart'; // Using the updated Trip model
 import '../utils/constants.dart';
 
 class GridItemCard extends StatelessWidget {

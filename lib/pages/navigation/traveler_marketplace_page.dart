@@ -2,8 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:skyporters/models/Trip.dart';
 
-import 'package:skyporters/models/trip.dart'; 
+// import 'package:skyporters/models/trip.dart';
 import 'package:skyporters/models/travler_product.dart';
 import 'package:skyporters/pages/TravelDetailsPage.dart';
 import 'package:skyporters/pages/passenger/post_trip_page.dart';

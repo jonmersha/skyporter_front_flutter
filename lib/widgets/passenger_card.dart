@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import '../models/trip.dart'; // Ensure correct path
+import 'package:skyporters/models/Trip.dart' show Trip;
+// import '../models/trip.dart'; // Ensure correct path
 
 class PassengerCard extends StatelessWidget {
   final Trip trip;

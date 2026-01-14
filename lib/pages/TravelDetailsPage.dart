@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:skyporters/models/trip.dart'; // Ensure correct path
+// import 'package:skyporters/models/trip.dart'; // Ensure correct path
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:skyporters/models/Trip.dart';
 import 'package:skyporters/utils/api_constants.dart';
 
 class TravelDetailsPage extends StatefulWidget {
