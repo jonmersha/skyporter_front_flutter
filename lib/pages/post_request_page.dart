@@ -16,7 +16,6 @@ class _PostRequestPageState extends State<PostRequestPage> {
   final _formKey = GlobalKey<FormState>();
   final storage = const FlutterSecureStorage();
 
-  // Controllers
   final _titleController = TextEditingController();
   final _fromCityController = TextEditingController();
   final _toCityController = TextEditingController();
@@ -24,36 +23,44 @@ class _PostRequestPageState extends State<PostRequestPage> {
   final _budgetController = TextEditingController();
   final _descController = TextEditingController();
 
-  bool isPurchase = false; // Toggle for request_type
+  bool isPurchase = false;
+  // This must match your Django Category.choices exactly
   String _selectedCategory = "ELECTRONICS";
   bool _isLoading = false;
 
-  // --- Logic: Submit to Django ---
+  // Map for UI Display vs Backend Keys
+  final Map<String, String> categoryOptions = {
+    "ELECTRONICS": "Electronics",
+    "FOOD_SUPPLEMENTS": "Food & Supplements",
+    "MEDICINES": "Medicines",
+    "COSMETICS": "Cosmetics",
+    "OTHERS": "Others",
+  };
+
   Future<void> _submitRequest() async {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
+    String? token = await storage.read(key: 'access');
 
     try {
-      String? token = await storage.read(key: 'access');
-
+      final url = Uri.parse("${ApiConstants.baseUrl}/api/customer-requests/");
       final response = await http.post(
-        Uri.parse("${ApiConstants.baseUrl}/api/customer-requests/"),
+        url,
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
           'Authorization': 'JWT $token',
         },
         body: jsonEncode({
-          "title": _titleController.text,
-          // If switch is ON, they buy and transport. If OFF, just transport.
+          "title": _titleController.text.trim(),
           "request_type": isPurchase ? "BUY_TRANSPORT" : "TRANSPORT_ONLY",
           "category": _selectedCategory,
-          "from_city": _fromCityController.text,
-          "to_city": _toCityController.text,
+          "from_city": _fromCityController.text.trim(),
+          "to_city": _toCityController.text.trim(),
           "preferred_delivery_date": _dateController.text,
-          "budget": double.tryParse(_budgetController.text) ?? 0.0,
-          "description": _descController.text,
+          "budget": double.parse(_budgetController.text), // Send as double, not String
+          "description": _descController.text.trim(),
           "is_open": true
         }),
       );
@@ -61,19 +68,20 @@ class _PostRequestPageState extends State<PostRequestPage> {
       if (response.statusCode == 201) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-                content: Text("Request posted to Marketplace!"),
-                backgroundColor: Colors.green),
+            const SnackBar(content: Text("Success! Posted to Marketplace")),
           );
           Navigator.pop(context, true);
         }
       } else {
-        debugPrint("Error: ${response.body}");
-        throw Exception("Failed to post request");
+        // Detailed error logging
+        final errorBody = jsonDecode(response.body);
+        print("Backend Error: $errorBody");
+        throw Exception(errorBody.toString());
       }
     } catch (e) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text("Error: $e")));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error: ${e.toString().replaceAll('Exception:', '')}")),
+      );
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -89,42 +97,36 @@ class _PostRequestPageState extends State<PostRequestPage> {
           key: _formKey,
           child: Column(
             children: [
-              _buildInput("Item Name", Icons.shopping_bag, _titleController),
+              _buildInput("What do you need?", Icons.shopping_bag, _titleController),
               _buildCategoryDropdown(),
               const SizedBox(height: 15),
-              _buildInput(
-                  "Pickup From (City)", Icons.location_on, _fromCityController),
-              _buildInput("Deliver To (City)", Icons.home, _toCityController),
+              _buildInput("Pickup City", Icons.location_on, _fromCityController),
+              _buildInput("Destination City", Icons.home, _toCityController),
               _buildDateInput(),
-              SwitchListTile(
-                title: const Text("I need the traveler to buy this for me"),
-                subtitle: Text(isPurchase
-                    ? "Request Type: Buy & Transport"
-                    : "Request Type: Transport Only"),
-                value: isPurchase,
-                activeColor: Colors.green[700],
-                onChanged: (v) => setState(() => isPurchase = v),
+
+              Card(
+                color: Colors.blue.withOpacity(0.05),
+                child: SwitchListTile(
+                  title: const Text("Buy & Transport"),
+                  subtitle: const Text("Traveler buys the item for you first"),
+                  value: isPurchase,
+                  onChanged: (v) => setState(() => isPurchase = v),
+                ),
               ),
-              _buildInput(
-                  "Budget / Reward (\$)", Icons.attach_money, _budgetController,
-                  isNum: true),
-              _buildInput(
-                  "Description / Details", Icons.description, _descController,
-                  maxLines: 3),
-              const SizedBox(height: 30),
+
+              _buildInput("Budget / Reward (\$)", Icons.attach_money, _budgetController, isNum: true),
+              _buildInput("Details (Link, Size, etc.)", Icons.notes, _descController, maxLines: 3),
+
+              const SizedBox(height: 25),
               ElevatedButton(
                 onPressed: _isLoading ? null : _submitRequest,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green[700],
-                  minimumSize: const Size(double.infinity, 55),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
+                  minimumSize: const Size(double.infinity, 50),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                 ),
                 child: _isLoading
                     ? const CircularProgressIndicator(color: Colors.white)
-                    : const Text("Post Request to Marketplace",
-                        style: TextStyle(
-                            color: Colors.white, fontWeight: FontWeight.bold)),
+                    : const Text("Post Request"),
               )
             ],
           ),
@@ -133,37 +135,26 @@ class _PostRequestPageState extends State<PostRequestPage> {
     );
   }
 
-  // --- UI Components ---
+  Widget _buildCategoryDropdown() {
+    return DropdownButtonFormField<String>(
+      value: _selectedCategory,
+      decoration: const InputDecoration(labelText: "Category", prefixIcon: Icon(Icons.category)),
+      items: categoryOptions.entries.map((entry) {
+        return DropdownMenuItem(value: entry.key, child: Text(entry.value));
+      }).toList(),
+      onChanged: (val) => setState(() => _selectedCategory = val!),
+    );
+  }
 
-  Widget _buildInput(String label, IconData icon, TextEditingController ctrl,
-      {bool isNum = false, int maxLines = 1}) {
+  Widget _buildInput(String label, IconData icon, TextEditingController ctrl, {bool isNum = false, int maxLines = 1}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 15),
       child: TextFormField(
         controller: ctrl,
         maxLines: maxLines,
         keyboardType: isNum ? TextInputType.number : TextInputType.text,
-        decoration: InputDecoration(
-          labelText: label,
-          prefixIcon: Icon(icon),
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-        ),
-        validator: (v) => v == null || v.isEmpty ? "Required" : null,
-      ),
-    );
-  }
-
-  Widget _buildCategoryDropdown() {
-    return DropdownButtonFormField(
-      value: _selectedCategory,
-      items: ["ELECTRONICS", "COSMETICS", "MEDICINES", "FOOD", "OTHERS"]
-          .map((c) => DropdownMenuItem(value: c, child: Text(c)))
-          .toList(),
-      onChanged: (val) => setState(() => _selectedCategory = val as String),
-      decoration: InputDecoration(
-        labelText: "Category",
-        prefixIcon: const Icon(Icons.category),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        decoration: InputDecoration(labelText: label, prefixIcon: Icon(icon)),
+        validator: (v) => v!.isEmpty ? "Required" : null,
       ),
     );
   }
@@ -174,25 +165,18 @@ class _PostRequestPageState extends State<PostRequestPage> {
       child: TextFormField(
         controller: _dateController,
         readOnly: true,
-        decoration: InputDecoration(
-          labelText: "Preferred Delivery Date",
-          prefixIcon: const Icon(Icons.calendar_today),
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-        ),
+        decoration: const InputDecoration(labelText: "Delivery Date", prefixIcon: Icon(Icons.calendar_month)),
         onTap: () async {
           DateTime? picked = await showDatePicker(
             context: context,
-            initialDate: DateTime.now(),
+            initialDate: DateTime.now().add(const Duration(days: 7)),
             firstDate: DateTime.now(),
             lastDate: DateTime(2027),
           );
           if (picked != null) {
-            setState(() =>
-                _dateController.text = DateFormat('yyyy-MM-dd').format(picked));
+            setState(() => _dateController.text = DateFormat('yyyy-MM-dd').format(picked));
           }
         },
-        validator: (v) =>
-            v == null || v.isEmpty ? "Please select a date" : null,
       ),
     );
   }

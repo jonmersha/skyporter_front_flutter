@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:skyporters/models/Trip.dart';
 import 'package:skyporters/pages/TravelDetailsPage.dart';
-import 'package:skyporters/pages/passenger/post_trip_page.dart';
 import 'package:skyporters/utils/api_constants.dart';
 import 'package:skyporters/widgets/passenger_card.dart';
 
@@ -26,13 +25,19 @@ class _TravelerMarketplacePageState extends State<TravelerMarketplacePage> {
     _fetchData();
   }
 
+  /// Fetches available trips from the Django backend
   Future<void> _fetchData() async {
     if (!mounted) return;
     setState(() => isLoading = true);
 
     try {
-      // Only fetching trips now
-      final response = await http.get(Uri.parse("${ApiConstants.baseUrl}/api/trips/"));
+      final response = await http.get(
+        Uri.parse("${ApiConstants.baseUrl}/api/trips/"),
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+      );
 
       if (response.statusCode == 200) {
         final List tripBody = jsonDecode(response.body);
@@ -43,12 +48,14 @@ class _TravelerMarketplacePageState extends State<TravelerMarketplacePage> {
             isLoading = false;
           });
         }
+      } else {
+        throw Exception("Failed to load trips: ${response.statusCode}");
       }
     } catch (e) {
       if (mounted) {
         setState(() => isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error syncing with Skyporters API: $e")),
+          SnackBar(content: Text("Connection Error: $e")),
         );
       }
     }
@@ -60,9 +67,16 @@ class _TravelerMarketplacePageState extends State<TravelerMarketplacePage> {
       backgroundColor: Colors.grey[50],
       appBar: AppBar(
         elevation: 0,
-        title: const Text("Available Trips", style: TextStyle(fontWeight: FontWeight.bold)),
+        backgroundColor: const Color(0xFF1A237E),
+        title: const Text(
+            "Traveler Marketplace",
+            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)
+        ),
         actions: [
-          IconButton(onPressed: _fetchData, icon: const Icon(Icons.refresh_rounded))
+          IconButton(
+              onPressed: _fetchData,
+              icon: const Icon(Icons.refresh_rounded, color: Colors.white)
+          )
         ],
       ),
       body: Column(
@@ -75,33 +89,33 @@ class _TravelerMarketplacePageState extends State<TravelerMarketplacePage> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const PostTripPage())
-        ).then((_) => _fetchData()),
-        label: const Text("Post Trip"),
-        icon: const Icon(Icons.add_location_alt_outlined),
-        backgroundColor: const Color(0xFF1A237E),
-      ),
+      // FloatingActionButton removed as per request
     );
   }
 
+  /// Search bar to filter trips by city
   Widget _buildSearchBar() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      color: Theme.of(context).primaryColor,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: const BoxDecoration(
+        color: Color(0xFF1A237E),
+        borderRadius: BorderRadius.only(
+          bottomLeft: Radius.circular(20),
+          bottomRight: Radius.circular(20),
+        ),
+      ),
       child: TextField(
         onChanged: (v) => setState(() => query = v),
         style: const TextStyle(color: Colors.white),
         decoration: InputDecoration(
-          hintText: "Search destinations...",
+          hintText: "Where are you sending to?",
           hintStyle: const TextStyle(color: Colors.white70),
           prefixIcon: const Icon(Icons.search, color: Colors.white70),
           filled: true,
-          fillColor: Colors.white.withOpacity(0.2),
+          fillColor: Colors.white.withOpacity(0.15),
+          contentPadding: const EdgeInsets.symmetric(vertical: 0),
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(15),
             borderSide: BorderSide.none,
           ),
         ),
@@ -109,19 +123,28 @@ class _TravelerMarketplacePageState extends State<TravelerMarketplacePage> {
     );
   }
 
+  /// List of trips filtered by the search query
   Widget _buildTripsList() {
     final filteredTrips = trips.where((t) =>
     t.destinationCity.toLowerCase().contains(query.toLowerCase()) ||
-        t.departureCity.toLowerCase().contains(query.toLowerCase())).toList();
+        t.departureCity.toLowerCase().contains(query.toLowerCase())
+    ).toList();
 
     if (filteredTrips.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.airplanemode_inactive, size: 64, color: Colors.grey[300]),
+            Icon(Icons.flight_takeoff_outlined, size: 80, color: Colors.grey[300]),
             const SizedBox(height: 16),
-            Text("No active journeys found", style: TextStyle(color: Colors.grey[500], fontSize: 16)),
+            Text(
+                "No travelers found for this route",
+                style: TextStyle(color: Colors.grey[600], fontSize: 16)
+            ),
+            TextButton(
+                onPressed: () => setState(() => query = ""),
+                child: const Text("Clear Search")
+            )
           ],
         ),
       );
@@ -130,15 +153,26 @@ class _TravelerMarketplacePageState extends State<TravelerMarketplacePage> {
     return RefreshIndicator(
       onRefresh: _fetchData,
       child: ListView.builder(
-        padding: const EdgeInsets.fromLTRB(8, 8, 8, 100),
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 20),
         itemCount: filteredTrips.length,
-        itemBuilder: (context, index) => PassengerCard(
-          trip: filteredTrips[index],
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => TravelDetailsPage(trip: filteredTrips[index])),
-          ),
-        ),
+        itemBuilder: (context, index) {
+          final trip = filteredTrips[index];
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 8.0),
+            child: PassengerCard(
+              trip: trip,
+              onTap: () {
+                // Navigates to the details page to start the Enquiry process
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => TravelDetailsPage(trip: trip)
+                  ),
+                );
+              },
+            ),
+          );
+        },
       ),
     );
   }
