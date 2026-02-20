@@ -1,10 +1,11 @@
+// login_page.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
-import 'package:skyporters/pages/auth/sign_up.dart';
 import 'dart:convert';
 import '../../utils/api_constants.dart';
-import 'registration_page.dart';
+import '../navigation/main_navigation_page.dart';
+import 'sign_up.dart'; // Import your Sign Up page
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -22,15 +23,16 @@ class _LoginPageState extends State<LoginPage> {
   bool _isLoading = false;
   bool _obscurePassword = true;
 
-  // --- Login Logic ---
+  final Color primaryDark = const Color(0xFF1A1A1A);
+  final Color accentGold = const Color(0xFFECAE0B);
+
   Future<void> _handleLogin() async {
     if (!_formKey.currentState!.validate()) return;
-
     setState(() => _isLoading = true);
 
     try {
       final response = await http.post(
-        Uri.parse(ApiConstants.login), // Your /auth/jwt/create/ endpoint
+        Uri.parse(ApiConstants.login),
         body: {
           'username': _usernameController.text.trim(),
           'password': _passwordController.text,
@@ -39,26 +41,30 @@ class _LoginPageState extends State<LoginPage> {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-
-        // Save tokens
         await storage.write(key: 'access', value: data['access']);
         await storage.write(key: 'refresh', value: data['refresh']);
 
-        if (mounted) {
-          // IMPORTANT: Return TRUE to tell MainNavigationPage to switch tabs
-          Navigator.pop(context, true);
-        }
+        if (!mounted) return;
+        FocusScope.of(context).unfocus();
+
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => const MainNavigationPage()),
+              (route) => false,
+        );
       } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Invalid username or password")),
-          );
-        }
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Invalid credentials"),
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Connection error. Is the server on?")),
+          const SnackBar(content: Text("Connection error. Check your server.")),
         );
       }
     } finally {
@@ -70,15 +76,7 @@ class _LoginPageState extends State<LoginPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        // Close icon clearly indicates the user can "cancel" and go back
-        leading: IconButton(
-          icon: const Icon(Icons.close, color: Colors.black, size: 28),
-          onPressed: () => Navigator.pop(context, false), // Returns FALSE
-        ),
-      ),
+      appBar: AppBar(backgroundColor: Colors.white, elevation: 0),
       body: SingleChildScrollView(
         padding: const EdgeInsets.symmetric(horizontal: 30),
         child: Form(
@@ -86,109 +84,95 @@ class _LoginPageState extends State<LoginPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const SizedBox(height: 20),
-              Text(
-                "Welcome Back",
-                style: TextStyle(
-                    fontSize: 32,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.indigo[900]),
-              ),
-              const Text("Login to manage your deals and profile",
-                  style: TextStyle(color: Colors.grey, fontSize: 16)),
-
+              Text("SKYPORT",
+                  style: TextStyle(color: accentGold, fontWeight: FontWeight.w900, letterSpacing: 4)),
+              const SizedBox(height: 8),
+              Text("Welcome Back",
+                  style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: primaryDark)),
               const SizedBox(height: 40),
 
-              // Username Field
-              TextFormField(
-                controller: _usernameController,
-                decoration: InputDecoration(
-                  labelText: "Username",
-                  prefixIcon: const Icon(Icons.person_outline),
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12)),
+              _buildField(_usernameController, "Username", Icons.person_outline),
+              const SizedBox(height: 20),
+              _buildField(_passwordController, "Password", Icons.lock_outline, isPass: true),
+
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: () { /* Add forgot password logic if needed */ },
+                  child: Text("Forgot Password?", style: TextStyle(color: Colors.grey[600], fontSize: 13)),
                 ),
-                validator: (v) => v!.isEmpty ? "Enter your username" : null,
               ),
+
               const SizedBox(height: 20),
 
-              // Password Field
-              TextFormField(
-                controller: _passwordController,
-                obscureText: _obscurePassword,
-                decoration: InputDecoration(
-                  labelText: "Password",
-                  prefixIcon: const Icon(Icons.lock_outline),
-                  suffixIcon: IconButton(
-                    icon: Icon(_obscurePassword
-                        ? Icons.visibility
-                        : Icons.visibility_off),
-                    onPressed: () =>
-                        setState(() => _obscurePassword = !_obscurePassword),
-                  ),
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                ),
-                validator: (v) => v!.isEmpty ? "Enter your password" : null,
-              ),
-
-              const SizedBox(height: 30),
-
-              // Login Button
               SizedBox(
                 width: double.infinity,
-                height: 55,
+                height: 60,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF1A237E),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
+                    backgroundColor: primaryDark,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                    elevation: 0,
                   ),
                   onPressed: _isLoading ? null : _handleLogin,
                   child: _isLoading
                       ? const CircularProgressIndicator(color: Colors.white)
-                      : const Text("LOGIN",
-                          style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold)),
-                ),
-              ),
-
-              const SizedBox(height: 15),
-
-              // Cancel / Guest Mode Link
-              Center(
-                child: TextButton(
-                  onPressed: () =>
-                      Navigator.pop(context, false), // Returns FALSE
-                  child: const Text("Cancel and Continue Browsing",
-                      style: TextStyle(color: Colors.grey)),
+                      : const Text("LOG IN", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
                 ),
               ),
 
               const SizedBox(height: 30),
 
-              // Sign Up Link
+              // SIGN UP OPTION
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Text("Don't have an account?"),
+                  Text("Don't have an account?", style: TextStyle(color: Colors.grey[600])),
                   TextButton(
                     onPressed: () {
                       Navigator.push(
                         context,
-                        MaterialPageRoute(
-                            builder: (context) => const SignUpPage()),
+                        MaterialPageRoute(builder: (context) => const SignUpPage()),
                       );
                     },
-                    child: const Text("Sign Up",
-                        style: TextStyle(fontWeight: FontWeight.bold)),
+                    child: Text(
+                      "SIGN UP",
+                      style: TextStyle(color: accentGold, fontWeight: FontWeight.bold),
+                    ),
                   ),
                 ],
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildField(TextEditingController ctrl, String label, IconData icon, {bool isPass = false}) {
+    return TextFormField(
+      controller: ctrl,
+      obscureText: isPass && _obscurePassword,
+      validator: (v) => v!.isEmpty ? "Field required" : null,
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: Icon(icon, color: primaryDark),
+        filled: true,
+        fillColor: Colors.grey[50],
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(15),
+          borderSide: BorderSide(color: Colors.grey.shade200),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(15),
+          borderSide: BorderSide(color: accentGold, width: 1.5),
+        ),
+        suffixIcon: isPass
+            ? IconButton(
+          icon: Icon(_obscurePassword ? Icons.visibility : Icons.visibility_off, size: 20),
+          onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+        )
+            : null,
       ),
     );
   }

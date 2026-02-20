@@ -4,12 +4,12 @@ import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../utils/api_constants.dart';
 
-class CreateEnquiryPage extends StatefulWidget {
+class ServiceEnquiryPage extends StatefulWidget {
   final dynamic source; // Can be Trip, TravelerProduct, or CustomerRequest
   final int receiverId;
   final String receiverName;
 
-  const CreateEnquiryPage({
+  const ServiceEnquiryPage({
     super.key,
     required this.source,
     required this.receiverId,
@@ -17,10 +17,10 @@ class CreateEnquiryPage extends StatefulWidget {
   });
 
   @override
-  State<CreateEnquiryPage> createState() => _CreateEnquiryPageState();
+  State<ServiceEnquiryPage> createState() => _ServiceEnquiryPageState();
 }
 
-class _CreateEnquiryPageState extends State<CreateEnquiryPage> {
+class _ServiceEnquiryPageState extends State<ServiceEnquiryPage> {
   final _messageController = TextEditingController();
   final storage = const FlutterSecureStorage();
   bool _isLoading = false;

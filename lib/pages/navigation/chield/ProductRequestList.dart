@@ -14,16 +14,16 @@ import 'package:skyporters/pages/post_request_page.dart';
 
 // Widgets
 import 'package:skyporters/widgets/customer_request_card.dart';
-import 'package:skyporters/widgets/product_slider.dart'; // Ensure AutoSlidingProductCard is here
+import 'package:skyporters/widgets/product_slider.dart';
 
-class RequestMarketplacePage extends StatefulWidget {
-  const RequestMarketplacePage({super.key});
+class ProductRequestList extends StatefulWidget {
+  const ProductRequestList({super.key});
 
   @override
-  State<RequestMarketplacePage> createState() => _RequestMarketplacePageState();
+  State<ProductRequestList> createState() => _ProductRequestListState();
 }
 
-class _RequestMarketplacePageState extends State<RequestMarketplacePage>
+class _ProductRequestListState extends State<ProductRequestList>
     with SingleTickerProviderStateMixin {
 
   late TabController _tabController;
@@ -33,10 +33,14 @@ class _RequestMarketplacePageState extends State<RequestMarketplacePage>
   List<CustomerRequest> allRequests = [];
   List<TravelerProduct> travelerItems = [];
 
+  // Theme Palette
+  final Color primaryDark = const Color(0xFF1A1A1A); // Midnight Charcoal
+  final Color accentGold = const Color(0xFFECAE0B);  // Golden Yellow
+  final Color brandGreen = const Color(0xFF089348);  // Emerald Green
+
   @override
   void initState() {
     super.initState();
-    // length: 2 (Shipping Requests and Traveler Offers)
     _tabController = TabController(length: 2, vsync: this);
     _fetchAllData();
   }
@@ -47,7 +51,6 @@ class _RequestMarketplacePageState extends State<RequestMarketplacePage>
     super.dispose();
   }
 
-  /// Fetches data for both tabs simultaneously
   Future<void> _fetchAllData() async {
     if (!mounted) return;
     setState(() => isLoading = true);
@@ -74,7 +77,7 @@ class _RequestMarketplacePageState extends State<RequestMarketplacePage>
       if (mounted) {
         setState(() => isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Sync Error: $e")),
+          SnackBar(backgroundColor: Colors.redAccent, content: Text("Sync Error: $e")),
         );
       }
     }
@@ -82,36 +85,38 @@ class _RequestMarketplacePageState extends State<RequestMarketplacePage>
 
   @override
   Widget build(BuildContext context) {
-    // Primary theme color for consistent UI
-    final primaryColor = Theme.of(context).primaryColor;
-
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      backgroundColor: const Color(0xFFF5F7F9),
       appBar: AppBar(
-        title: const Text("Marketplace", style: TextStyle(fontWeight: FontWeight.bold)),
-        centerTitle: true,
+        elevation: 0,
+        backgroundColor: primaryDark,
+        title: const Text("Marketplace",
+            style: TextStyle(fontWeight: FontWeight.w900, fontSize: 22, color: Colors.white)),
+        centerTitle: false,
         actions: [
-          IconButton(onPressed: _fetchAllData, icon: const Icon(Icons.refresh_rounded))
+          IconButton(onPressed: _fetchAllData,
+              icon: const Icon(Icons.refresh_rounded, color: Colors.white))
         ],
         bottom: TabBar(
           controller: _tabController,
-          // FIX: Explicitly setting colors so text and icons are visible
-          labelColor: Colors.white,            // Active tab text/icon
-          unselectedLabelColor: Colors.white70, // Inactive tab text/icon
-          indicatorColor: Colors.white,        // Bottom line color
-          indicatorWeight: 3,
+          labelColor: accentGold,
+          unselectedLabelColor: Colors.white54,
+          indicatorColor: accentGold,
+          indicatorWeight: 4,
+          indicatorPadding: const EdgeInsets.symmetric(horizontal: 20),
+          labelStyle: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14),
           tabs: const [
-            Tab(text: "Shipping", icon: Icon(Icons.local_shipping_outlined)),
-            Tab(text: "Shop", icon: Icon(Icons.shopping_bag_outlined)),
+            Tab(text: "SHIPPING", icon: Icon(Icons.local_shipping_rounded)),
+            Tab(text: "SHOP", icon: Icon(Icons.storefront_rounded)),
           ],
         ),
       ),
       body: Column(
         children: [
-          _buildSearchHeader(primaryColor),
+          _buildSearchHeader(),
           Expanded(
             child: isLoading
-                ? const Center(child: CircularProgressIndicator())
+                ? Center(child: CircularProgressIndicator(color: brandGreen))
                 : TabBarView(
               controller: _tabController,
               children: [
@@ -125,31 +130,38 @@ class _RequestMarketplacePageState extends State<RequestMarketplacePage>
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => Navigator.push(
           context,
-          MaterialPageRoute(builder: (_) => const PostRequestPage()),
+          MaterialPageRoute(builder: (_) => const PostProductRequest()),
         ).then((_) => _fetchAllData()),
-        label: const Text("Request Item"),
-        icon: const Icon(Icons.add_shopping_cart),
-        backgroundColor: Colors.green[700],
+        label: const Text("NEW REQUEST", style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1)),
+        icon: const Icon(Icons.add_circle_outline),
+        backgroundColor: brandGreen,
+        elevation: 6,
       ),
     );
   }
 
-  /// Search bar with primary color background for better UI flow
-  Widget _buildSearchHeader(Color bgColor) {
+  Widget _buildSearchHeader() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      color: bgColor,
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
+      decoration: BoxDecoration(
+        color: primaryDark,
+        borderRadius: const BorderRadius.only(
+          bottomLeft: Radius.circular(30),
+          bottomRight: Radius.circular(30),
+        ),
+      ),
       child: TextField(
         onChanged: (v) => setState(() => query = v),
-        style: const TextStyle(color: Colors.white),
+        style: const TextStyle(color: Colors.black87),
         decoration: InputDecoration(
           hintText: "Search destinations or items...",
-          hintStyle: const TextStyle(color: Colors.white70),
-          prefixIcon: const Icon(Icons.search, color: Colors.white70),
+          hintStyle: TextStyle(color: Colors.grey[400], fontSize: 14),
+          prefixIcon: Icon(Icons.search_rounded, color: accentGold),
           filled: true,
-          fillColor: Colors.white.withOpacity(0.2),
+          fillColor: Colors.white,
+          contentPadding: const EdgeInsets.symmetric(vertical: 12),
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(15),
             borderSide: BorderSide.none,
           ),
         ),
@@ -157,18 +169,18 @@ class _RequestMarketplacePageState extends State<RequestMarketplacePage>
     );
   }
 
-  /// Tab 1: Shipping Requests List
   Widget _buildRequestsList() {
     final filtered = allRequests.where((r) =>
     r.toCity.toLowerCase().contains(query.toLowerCase()) ||
         r.title.toLowerCase().contains(query.toLowerCase())).toList();
 
-    if (filtered.isEmpty) return _buildEmptyState(Icons.search_off, "No shipping requests found");
+    if (filtered.isEmpty) return _buildEmptyState(Icons.manage_search_rounded, "No shipping requests found");
 
     return RefreshIndicator(
+      color: brandGreen,
       onRefresh: _fetchAllData,
       child: ListView.builder(
-        padding: const EdgeInsets.fromLTRB(8, 8, 8, 80),
+        padding: const EdgeInsets.fromLTRB(8, 12, 8, 80),
         itemCount: filtered.length,
         itemBuilder: (context, index) => CustomerRequestCard(
           request: filtered[index],
@@ -181,20 +193,20 @@ class _RequestMarketplacePageState extends State<RequestMarketplacePage>
     );
   }
 
-  /// Tab 2: Traveler Offers Grid
   Widget _buildTravelerOffersGrid() {
     final filtered = travelerItems.where((p) =>
         p.name.toLowerCase().contains(query.toLowerCase())).toList();
 
-    if (filtered.isEmpty) return _buildEmptyState(Icons.inventory_2_outlined, "No items in shop");
+    if (filtered.isEmpty) return _buildEmptyState(Icons.inventory_2_rounded, "No items in shop");
 
     return RefreshIndicator(
+      color: brandGreen,
       onRefresh: _fetchAllData,
       child: GridView.builder(
-        padding: const EdgeInsets.fromLTRB(12, 12, 12, 80),
+        padding: const EdgeInsets.fromLTRB(12, 16, 12, 80),
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 2,
-          childAspectRatio: 0.75, // Adjust based on your card height
+          childAspectRatio: 0.72,
           crossAxisSpacing: 12,
           mainAxisSpacing: 12,
         ),
@@ -204,15 +216,18 @@ class _RequestMarketplacePageState extends State<RequestMarketplacePage>
     );
   }
 
-  /// Common empty state widget
   Widget _buildEmptyState(IconData icon, String message) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(icon, size: 60, color: Colors.grey[300]),
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(color: Colors.grey[200], shape: BoxShape.circle),
+            child: Icon(icon, size: 50, color: Colors.grey[400]),
+          ),
           const SizedBox(height: 16),
-          Text(message, style: TextStyle(color: Colors.grey[500], fontSize: 16)),
+          Text(message, style: TextStyle(color: Colors.grey[700], fontSize: 16, fontWeight: FontWeight.w800)),
         ],
       ),
     );

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -16,133 +17,122 @@ class _PostTripPageState extends State<PostTripPage> {
   final _formKey = GlobalKey<FormState>();
   final storage = const FlutterSecureStorage();
 
-  // Updated controllers to match the new API schema
-  final _departureController = TextEditingController();
-  final _destinationController = TextEditingController();
-  final _arrivalDateController = TextEditingController();
-  final _laptopFeeController = TextEditingController();
-  final _mobileFeeController = TextEditingController();
-  final _cosmeticFeeController = TextEditingController();
-  final _otherFeeController = TextEditingController();
+  final Color primaryDark = const Color(0xFF1A1A1A);
+  final Color accentGold = const Color(0xFFECAE0B);
+  final Color brandGreen = const Color(0xFF089348);
+
+  final _departureCityCtrl = TextEditingController();
+  final _destinationCityCtrl = TextEditingController();
+  final _departureDateCtrl = TextEditingController(); // NEW
+  final _arrivalDateCtrl = TextEditingController();
+
+  final _laptopFeeCtrl = TextEditingController(text: "50.00");
+  final _mobileFeeCtrl = TextEditingController(text: "30.00");
+  final _cosmeticFeeCtrl = TextEditingController(text: "10.00");
+  final _otherFeeCtrl = TextEditingController(text: "15.00");
 
   bool _isLoading = false;
-
-  Future<void> _selectDate() async {
-    DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: DateTime.now(),
-      firstDate: DateTime.now(),
-      lastDate: DateTime(2030),
-    );
-    if (picked != null) {
-      setState(() {
-        _arrivalDateController.text = DateFormat('yyyy-MM-dd').format(picked);
-      });
-    }
-  }
 
   Future<void> _submitTrip() async {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
+    String? token = await storage.read(key: 'access');
 
     try {
-      String? token = await storage.read(key: 'access');
-
-      // Matching the exact schema from your CURL command
-      final Map<String, dynamic> tripData = {
-        "departure_city": _departureController.text,
-        "destination_city": _destinationController.text,
-        "arrival_date": _arrivalDateController.text, // Format: YYYY-MM-DD
-        "laptop_fee": double.tryParse(_laptopFeeController.text) ?? 0,
-        "mobile_fee": double.tryParse(_mobileFeeController.text) ?? 0,
-        "cosmetic_fee": double.tryParse(_cosmeticFeeController.text) ?? 0,
-        "other_fee_base": double.tryParse(_otherFeeController.text) ?? 0,
-        "is_active": true
-      };
-
       final response = await http.post(
         Uri.parse("${ApiConstants.baseUrl}/api/trips/"),
         headers: {
           'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'Authorization': 'JWT $token', // JWT Prefix as per your CURL
+          'Authorization': 'JWT $token',
         },
-        body: jsonEncode(tripData),
+        body: jsonEncode({
+          "departure_city": _departureCityCtrl.text.trim(),
+          "destination_city": _destinationCityCtrl.text.trim(),
+          "departure_date": _departureDateCtrl.text, // NEW
+          "arrival_date": _arrivalDateCtrl.text,
+          "laptop_fee": double.parse(_laptopFeeCtrl.text),
+          "mobile_fee": double.parse(_mobileFeeCtrl.text),
+          "cosmetic_fee": double.parse(_cosmeticFeeCtrl.text),
+          "other_fee": double.parse(_otherFeeCtrl.text),
+          "is_active": true
+        }),
       );
 
       if (response.statusCode == 201) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-                content: Text("Trip published successfully!"),
-                backgroundColor: Colors.green),
-          );
-          Navigator.pop(context);
+          _showSnackBar("Trip Posted!", brandGreen);
+          Navigator.pop(context, true);
         }
       } else {
-        final errorData = jsonDecode(response.body);
-        throw Exception(errorData.toString());
+        final error = jsonDecode(response.body);
+        _showSnackBar("Error: ${error.toString()}", Colors.redAccent);
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red),
-        );
-      }
+      _showSnackBar("Network Error", Colors.orange);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
+  void _showSnackBar(String msg, Color color) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg), backgroundColor: color, behavior: SnackBarBehavior.floating),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Post Your Trip"), centerTitle: true),
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        systemOverlayStyle: SystemUiOverlayStyle.light,
+        backgroundColor: primaryDark,
+        title: const Text("REGISTER TRIP", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+        centerTitle: true,
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(bottom: Radius.circular(20))),
+      ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(25),
         child: Form(
           key: _formKey,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text("Route Details",
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+              _buildSectionHeader("ROUTE & TIMING"),
+              _buildInput("Departure City", Icons.flight_takeoff, _departureCityCtrl),
+              _buildInput("Destination City", Icons.flight_land, _destinationCityCtrl),
+
+              Row(
+                children: [
+                  Expanded(child: _buildDatePicker("Departure", _departureDateCtrl)),
+                  const SizedBox(width: 15),
+                  Expanded(child: _buildDatePicker("Arrival", _arrivalDateCtrl)),
+                ],
+              ),
+
+              const SizedBox(height: 10),
+              const Divider(),
               const SizedBox(height: 15),
-              _buildInput(
-                  "Departure City", Icons.flight_takeoff, _departureController),
-              _buildInput("Destination City", Icons.flight_land,
-                  _destinationController),
-              _buildDateInput(),
-              const Divider(height: 40),
-              const Text("Fee Structure (\$)",
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-              const SizedBox(height: 15),
-              _buildInput("Laptop Fee", Icons.laptop, _laptopFeeController,
-                  isNumber: true),
-              _buildInput(
-                  "Mobile Fee", Icons.phone_android, _mobileFeeController,
-                  isNumber: true),
-              _buildInput("Cosmetics Fee", Icons.face, _cosmeticFeeController,
-                  isNumber: true),
-              _buildInput(
-                  "Other Items (Base Fee)", Icons.category, _otherFeeController,
-                  isNumber: true),
+
+              _buildSectionHeader("FEES (\$USD)"),
+              Row(
+                children: [
+                  Expanded(child: _buildInput("Laptop", Icons.laptop, _laptopFeeCtrl, isNum: true)),
+                  const SizedBox(width: 15),
+                  Expanded(child: _buildInput("Mobile", Icons.smartphone, _mobileFeeCtrl, isNum: true)),
+                ],
+              ),
+              Row(
+                children: [
+                  Expanded(child: _buildInput("Cosmetic", Icons.face, _cosmeticFeeCtrl, isNum: true)),
+                  const SizedBox(width: 15),
+                  Expanded(child: _buildInput("Other", Icons.inventory_2, _otherFeeCtrl, isNum: true)),
+                ],
+              ),
+
               const SizedBox(height: 30),
-              ElevatedButton(
-                onPressed: _isLoading ? null : _submitTrip,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF1A237E),
-                  minimumSize: const Size(double.infinity, 55),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                ),
-                child: _isLoading
-                    ? const CircularProgressIndicator(color: Colors.white)
-                    : const Text("PUBLISH TRIP",
-                        style: TextStyle(
-                            color: Colors.white, fontWeight: FontWeight.bold)),
-              )
+              _buildSubmitButton(),
             ],
           ),
         ),
@@ -150,47 +140,72 @@ class _PostTripPageState extends State<PostTripPage> {
     );
   }
 
-  // --- Reusable Components ---
+  Widget _buildSectionHeader(String title) => Padding(
+    padding: const EdgeInsets.only(bottom: 15),
+    child: Text(title, style: TextStyle(color: accentGold, fontWeight: FontWeight.bold, fontSize: 12)),
+  );
 
-  Widget _buildInput(
-      String label, IconData icon, TextEditingController controller,
-      {bool isNumber = false}) {
+  Widget _buildInput(String label, IconData icon, TextEditingController ctrl, {bool isNum = false}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 15),
       child: TextFormField(
-        controller: controller,
-        keyboardType: isNumber
-            ? const TextInputType.numberWithOptions(decimal: true)
-            : TextInputType.text,
+        controller: ctrl,
+        keyboardType: isNum ? TextInputType.number : TextInputType.text,
         decoration: InputDecoration(
           labelText: label,
-          prefixIcon: Icon(icon, color: Colors.indigo),
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          prefixIcon: Icon(icon, color: primaryDark, size: 20),
           filled: true,
           fillColor: Colors.grey[50],
+          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide(color: Colors.grey.shade200)),
+          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide(color: accentGold, width: 2)),
         ),
-        validator: (value) =>
-            value == null || value.isEmpty ? "Required" : null,
+        validator: (v) => v!.isEmpty ? "Required" : null,
       ),
     );
   }
 
-  Widget _buildDateInput() {
+  Widget _buildDatePicker(String label, TextEditingController ctrl) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 15),
       child: TextFormField(
-        controller: _arrivalDateController,
+        controller: ctrl,
         readOnly: true,
         decoration: InputDecoration(
-          labelText: "Arrival Date",
-          prefixIcon: const Icon(Icons.calendar_today, color: Colors.indigo),
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          labelText: label,
+          prefixIcon: Icon(Icons.calendar_today, color: primaryDark, size: 18),
           filled: true,
           fillColor: Colors.grey[50],
+          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide(color: Colors.grey.shade200)),
+          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide(color: accentGold, width: 2)),
         ),
-        onTap: _selectDate,
-        validator: (value) =>
-            value == null || value.isEmpty ? "Select date" : null,
+        onTap: () async {
+          DateTime? picked = await showDatePicker(
+            context: context,
+            initialDate: DateTime.now().add(const Duration(days: 1)),
+            firstDate: DateTime.now(),
+            lastDate: DateTime(2030),
+            builder: (context, child) => Theme(
+              data: Theme.of(context).copyWith(colorScheme: ColorScheme.light(primary: primaryDark)),
+              child: child!,
+            ),
+          );
+          if (picked != null) {
+            setState(() => ctrl.text = DateFormat('yyyy-MM-dd').format(picked));
+          }
+        },
+        validator: (v) => v!.isEmpty ? "Select" : null,
+      ),
+    );
+  }
+
+  Widget _buildSubmitButton() {
+    return SizedBox(
+      width: double.infinity,
+      height: 60,
+      child: ElevatedButton(
+        onPressed: _isLoading ? null : _submitTrip,
+        style: ElevatedButton.styleFrom(backgroundColor: primaryDark, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
+        child: _isLoading ? const CircularProgressIndicator(color: Colors.white) : const Text("POST TRIP", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
       ),
     );
   }

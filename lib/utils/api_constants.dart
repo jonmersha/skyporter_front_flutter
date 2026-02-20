@@ -1,7 +1,9 @@
 class ApiConstants {
   // Base URL - Replace with your server IP or domain
   // Use http://10.0.2.2:8000 for Android Emulator to reach localhost
-  static const String baseUrl = "http://10.11.241.51:8000";
+  // 192.168.8.102
+  //static const String baseUrl = "http://10.11.241.51:8000";
+  static const String baseUrl = "http://192.168.8.119:8000";
   //static const String baseUrl = "https://skyport.birrx.io";
 
   // --- AUTH ENDPOINTS (Djoser + SimpleJWT) ---
@@ -19,6 +21,8 @@ class ApiConstants {
   static const String requests = "$baseUrl/api/requests/";
   static const String deals = "$baseUrl/api/deals/";
   static const String profiles = "$baseUrl/api/profile/";
+
+
 
   // --- HELPER FOR HEADERS ---
   static Map<String, String> authHeader(String token) {

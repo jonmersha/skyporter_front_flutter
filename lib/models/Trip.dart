@@ -2,10 +2,11 @@ class Trip {
   final int id;
   final int travelerId;
   final String travelerName;
-  final String? travelerPhone; // Nullable because JSON shows it can be null
+  final String? travelerPhone;
   final String travelerEmail;
   final String departureCity;
   final String destinationCity;
+  final DateTime departureDate;
   final DateTime arrivalDate;
   final double laptopFee;
   final double mobileFee;
@@ -21,6 +22,7 @@ class Trip {
     required this.travelerEmail,
     required this.departureCity,
     required this.destinationCity,
+    required this.departureDate, // Added this
     required this.arrivalDate,
     required this.laptopFee,
     required this.mobileFee,
@@ -34,19 +36,23 @@ class Trip {
       id: json['id'] ?? 0,
       travelerId: json['traveler'] ?? 0,
       travelerName: json['traveler_name'] ?? "Unknown",
-      travelerPhone: json['traveler_phone'], // Correctly handle null
+      travelerPhone: json['traveler_phone'],
       travelerEmail: json['traveler_email'] ?? "",
       departureCity: json['departure_city'] ?? "",
       destinationCity: json['destination_city'] ?? "",
-      // Use tryParse or a fallback for date parsing
+
+      // --- New: Mapping departure_date from Django ---
+      departureDate: json['departure_date'] != null
+          ? DateTime.parse(json['departure_date'])
+          : DateTime.now(), // Fallback to current time if null
+
       arrivalDate: json['arrival_date'] != null
           ? DateTime.parse(json['arrival_date'])
           : DateTime.now(),
-      // Use double.tryParse for safety against string numbers
+
       laptopFee: double.tryParse(json['laptop_fee'].toString()) ?? 0.0,
       mobileFee: double.tryParse(json['mobile_fee'].toString()) ?? 0.0,
       cosmeticFee: double.tryParse(json['cosmetic_fee'].toString()) ?? 0.0,
-      // FIXED: Mapping from 'other_fee' instead of 'other_fee_base'
       otherFee: double.tryParse(json['other_fee'].toString()) ?? 0.0,
       isActive: json['is_active'] ?? true,
     );

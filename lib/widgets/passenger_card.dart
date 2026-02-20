@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:skyporters/models/Trip.dart' show Trip;
-// import '../models/trip.dart'; // Ensure correct path
+import 'package:intl/intl.dart';
 
 class PassengerCard extends StatelessWidget {
   final Trip trip;
@@ -14,106 +14,210 @@ class PassengerCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-      elevation: 3,
-      shadowColor: Colors.black26,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(15),
-        child: Padding(
-          padding: const EdgeInsets.all(15.0), // Increased padding for better feel
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // --- Top Section: Route and Status ---
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Expanded(
-                    child: Text(
-                      "${trip.departureCity} ➔ ${trip.destinationCity}",
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                        color: Color(0xFF1A237E),
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+
+    // Defined Theme Colors
+    const Color departureColor = Color(0xFFECAE0B); // Golden Yellow
+    const Color arrivalColor = Color(0xFF089348);   // Emerald Green
+    const Color footerColor = Color(0xFF1A1A1A);    // Deep Anchor Charcoal
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: Card(
+        color: Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(24),
+          side: BorderSide(color: Colors.grey.shade100, width: 1.5),
+        ),
+        elevation: 8,
+        shadowColor: Colors.black.withOpacity(0.1),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(24),
+          child: Padding(
+            padding: const EdgeInsets.all(20.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // --- Header ---
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    _buildStatusChip(),
+                    Text(
+                      "ID #${trip.id}",
+                      style: TextStyle(
+                        fontWeight: FontWeight.w900,
+                        color: Colors.grey.shade400,
+                        fontSize: 14,
+                        letterSpacing: 1,
                       ),
                     ),
-                  ),
-                  _buildStatusChip(),
-                ],
-              ),
-              const SizedBox(height: 8),
+                  ],
+                ),
+                const SizedBox(height: 20),
 
-              // --- Middle Section: Traveler and Date ---
-              Row(
-                children: [
-                  const Icon(Icons.person_outline, size: 14, color: Colors.grey),
-                  const SizedBox(width: 4),
-                  Text(
-                    trip.travelerName, // Updated from travelerUsername
-                    style: TextStyle(fontSize: 13, color: Colors.grey[700]),
+                // --- Main Content ---
+                if (isLandscape)
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: _buildStopSection("DEPARTURE", trip.departureDate, trip.departureCity, departureColor, Icons.flight_takeoff)),
+                      _buildLandscapeConnector(),
+                      Expanded(child: _buildStopSection("ARRIVAL", trip.arrivalDate, trip.destinationCity, arrivalColor, Icons.flight_land)),
+                    ],
+                  )
+                else
+                  Column(
+                    children: [
+                      _buildStopSection("DEPARTURE", trip.departureDate, trip.departureCity, departureColor, Icons.flight_takeoff),
+                      _buildPortraitConnector(),
+                      _buildStopSection("ARRIVAL", trip.arrivalDate, trip.destinationCity, arrivalColor, Icons.flight_land),
+                    ],
                   ),
-                  const SizedBox(width: 12),
-                  const Icon(Icons.calendar_today, size: 14, color: Colors.grey),
-                  const SizedBox(width: 4),
-                  Text(
-                    trip.arrivalDate.toString().split(' ')[0],
-                    style: TextStyle(fontSize: 13, color: Colors.grey[700]),
-                  ),
-                ],
-              ),
-              const Divider(height: 24, thickness: 0.5),
 
-              // --- Bottom Section: The "Price Menu" Bar ---
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround, // Space items evenly
-                children: [
-                  _priceBadge(Icons.laptop, trip.laptopFee),
-                  _priceBadge(Icons.phone_iphone, trip.mobileFee),
-                  _priceBadge(Icons.face, trip.cosmeticFee),
-                  _priceBadge(Icons.inventory_2, trip.otherFee),
-                ],
-              ),
-            ],
+                const SizedBox(height: 24),
+
+                // --- Footer (Adjusted to Anchor the Colors) ---
+                _buildTravelerFooter(footerColor),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _priceBadge(IconData icon, double price) {
-    return Column(
+  Widget _buildStopSection(String label, DateTime date, String city, Color themeColor, IconData icon) {
+    return Row(
       children: [
-        Icon(icon, size: 20, color: Colors.indigo[900]),
-        const SizedBox(height: 4),
-        Text(
-          "\$${price.toStringAsFixed(0)}", // Formatted to 0 decimal places for clean UI
-          style: const TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.bold,
-            color: Colors.green,
+        // High Contrast Date Box
+        Container(
+          width: 90,
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: themeColor,
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: [
+              BoxShadow(
+                color: themeColor.withOpacity(0.3),
+                blurRadius: 8,
+                offset: const Offset(0, 4),
+              )
+            ],
+          ),
+          child: Column(
+            children: [
+              Text(label, style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: 0.5)),
+              Text(DateFormat('dd').format(date), style: const TextStyle(fontSize: 36, fontWeight: FontWeight.w900, color: Colors.white, height: 1.1)),
+              Text(DateFormat('MMM').format(date).toUpperCase(), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Colors.white)),
+            ],
+          ),
+        ),
+        const SizedBox(width: 16),
+        // City Info
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(icon, size: 16, color: themeColor),
+                  const SizedBox(width: 6),
+                  Text(
+                    label == "DEPARTURE" ? "FROM" : "TO",
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: themeColor),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 2),
+              Text(
+                city.toUpperCase(),
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                  color: Color(0xFF2D3436), // Deep Charcoal for readability
+                  letterSpacing: -0.5,
+                ),
+              ),
+            ],
           ),
         ),
       ],
     );
   }
 
-  Widget _buildStatusChip() {
+  Widget _buildPortraitConnector() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      height: 30,
+      margin: const EdgeInsets.only(left: 45),
+      alignment: Alignment.centerLeft,
+      child: VerticalDivider(color: Colors.grey.shade200, thickness: 3),
+    );
+  }
+
+  Widget _buildLandscapeConnector() {
+    return Container(
+      width: 50,
+      height: 80,
+      alignment: Alignment.center,
+      child: Icon(Icons.double_arrow_rounded, color: Colors.grey.shade300, size: 28),
+    );
+  }
+
+  Widget _buildTravelerFooter(Color bgColor) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: trip.isActive ? Colors.green[50] : Colors.red[50],
-        borderRadius: BorderRadius.circular(8),
+        color: bgColor,
+        borderRadius: BorderRadius.circular(18),
       ),
-      child: Text(
-        trip.isActive ? "ACTIVE" : "CLOSED",
-        style: TextStyle(
-          fontSize: 10,
-          fontWeight: FontWeight.bold,
-          color: trip.isActive ? Colors.green[700] : Colors.red[700],
-        ),
+      child: Row(
+        children: [
+          const CircleAvatar(
+            backgroundColor: Colors.white12,
+            radius: 18,
+            child: Icon(Icons.person, color: Colors.white, size: 22),
+          ),
+          const SizedBox(width: 12),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text("TRAVELER", style: TextStyle(fontSize: 9, color: Colors.white60, fontWeight: FontWeight.bold)),
+              Text(
+                trip.travelerName,
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Colors.white),
+              ),
+            ],
+          ),
+          const Spacer(),
+          const Icon(Icons.verified_user, color: Colors.amber, size: 24),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusChip() {
+    final bool isActive = trip.isActive;
+    final Color color = isActive ? const Color(0xFF089348) : Colors.orange.shade900;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.2)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CircleAvatar(radius: 3, backgroundColor: color),
+          const SizedBox(width: 6),
+          Text(
+            isActive ? "ACTIVE" : "PENDING",
+            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: color, letterSpacing: 0.5),
+          ),
+        ],
       ),
     );
   }
