@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
-import 'package:skyporters/pages/auth/login_page.dart';
+import 'package:http_parser/http_parser.dart';
+import 'package:image_picker/image_picker.dart';
 import 'dart:convert';
-import 'package:skyporters/utils/api_constants.dart';
 
+import 'package:skyporters/utils/api_constants.dart';
+import 'package:skyporters/pages/auth/login_page.dart';
 import 'package:skyporters/pages/passenger/post_trip_page.dart';
-import 'package:skyporters/pages/travler_product.dart';
-import '../../post_request_page.dart';
+import 'package:skyporters/pages/profile/new_product_showroom.dart';
+import '../../profile/post_request_page.dart';
 import '../../profile/my_listings_page.dart';
 
 class CustomerDealList extends StatefulWidget {
@@ -20,8 +22,8 @@ class CustomerDealList extends StatefulWidget {
 class _CustomerDealListState extends State<CustomerDealList> {
   final storage = const FlutterSecureStorage();
   late Future<Map<String, dynamic>> _userDataFuture;
+  final ImagePicker _picker = ImagePicker();
 
-  // Skyport Brand Palette
   final Color primaryDark = const Color(0xFF1A1A1A);
   final Color accentGold = const Color(0xFFECAE0B);
   final Color brandGreen = const Color(0xFF089348);
@@ -29,9 +31,10 @@ class _CustomerDealListState extends State<CustomerDealList> {
   @override
   void initState() {
     super.initState();
-    // Initialize the future once to prevent redundant API calls on rebuild
     _userDataFuture = _fetchUserData();
   }
+
+  // --- API SERVICES ---
 
   Future<Map<String, dynamic>> _fetchUserData() async {
     String? token = await storage.read(key: 'access');
@@ -40,59 +43,148 @@ class _CustomerDealListState extends State<CustomerDealList> {
     try {
       final response = await http.get(
         Uri.parse(ApiConstants.userMe),
-        headers: ApiConstants.authHeader(token),
+        headers: {'Authorization': 'JWT $token', 'Accept': 'application/json'},
       );
 
       if (response.statusCode == 200) {
-        return jsonDecode(response.body);
+        return jsonDecode(utf8.decode(response.bodyBytes));
       } else if (response.statusCode == 401) {
         _handleLogout();
         throw Exception("Unauthorized");
-      } else {
-        throw Exception("Server Error: ${response.statusCode}");
       }
+      throw Exception("Server Error");
     } catch (e) {
-      throw Exception("Connection failed. Check internet.");
+      throw Exception("Failed to sync profile");
     }
   }
 
-  Future<void> _handleLogout() async {
-    await storage.deleteAll();
-    if (mounted) {
-      // Clear navigation stack and return to Login
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (context) => const LoginPage()),
-            (route) => false,
-      );
+  // --- IMAGE UPLOAD LOGIC ---
+
+  void _showPickOptions() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_library),
+              title: const Text('Gallery'),
+              onTap: () {
+                Navigator.pop(context);
+                _handleImageUpload(ImageSource.gallery);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.camera_alt),
+              title: const Text('Camera'),
+              onTap: () {
+                Navigator.pop(context);
+                _handleImageUpload(ImageSource.camera);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _handleImageUpload(ImageSource source) async {
+    final XFile? image = await _picker.pickImage(
+        source: source, imageQuality: 50, maxWidth: 800);
+    if (image == null) return;
+
+    _showLoading();
+    String? token = await storage.read(key: 'access');
+
+    try {
+      var request =
+          http.MultipartRequest('PATCH', Uri.parse(ApiConstants.userMe));
+      request.headers['Authorization'] = 'JWT $token';
+
+      request.files.add(await http.MultipartFile.fromPath(
+        'profile_picture', // Ensure this matches Django model/serializer
+        image.path,
+        contentType: MediaType('image', 'jpeg'),
+      ));
+
+      var streamedResponse = await request.send();
+      var response = await http.Response.fromStream(streamedResponse);
+
+      if (!mounted) return;
+      Navigator.pop(context);
+
+      if (response.statusCode == 200) {
+        setState(() {
+          _userDataFuture = _fetchUserData();
+        });
+        _showSnackBar("Profile photo updated!", brandGreen);
+      } else {
+        _showSnackBar("Upload failed", Colors.redAccent);
+      }
+    } catch (e) {
+      if (mounted) Navigator.pop(context);
+      _showSnackBar("Connection error", Colors.redAccent);
     }
   }
+
+  // --- TEXT UPDATE LOGIC ---
+
+  Future<void> _updateProfileText(
+      String fName, String lName, String phone) async {
+    String? token = await storage.read(key: 'access');
+    _showLoading();
+
+    try {
+      final response = await http.patch(
+        Uri.parse(ApiConstants.userMe),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'JWT $token',
+        },
+        body: jsonEncode({
+          "first_name": fName.trim(),
+          "last_name": lName.trim(),
+          "phone_number": phone.trim(),
+        }),
+      );
+
+      if (!mounted) return;
+      Navigator.pop(context);
+
+      if (response.statusCode == 200) {
+        setState(() {
+          _userDataFuture = _fetchUserData();
+        });
+        _showSnackBar("Profile updated!", brandGreen);
+      }
+    } catch (e) {
+      if (mounted) Navigator.pop(context);
+    }
+  }
+
+  // --- UI COMPONENTS ---
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
-      // FutureBuilder optimizes the "Waiting" state
       body: FutureBuilder<Map<String, dynamic>>(
         future: _userDataFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return Center(child: CircularProgressIndicator(color: accentGold));
           }
-
-          if (snapshot.hasError) {
+          if (snapshot.hasError)
             return _buildErrorState(snapshot.error.toString());
-          }
 
           final userData = snapshot.data!;
-          final String username = userData['username'] ?? "User";
-
           return CustomScrollView(
             physics: const BouncingScrollPhysics(),
             slivers: [
-              _buildHeader(username),
-              SliverToBoxAdapter(
-                child: _buildListMenu(),
-              ),
+              _buildHeader(userData),
+              SliverToBoxAdapter(child: _buildListMenu(userData)),
             ],
           );
         },
@@ -100,36 +192,29 @@ class _CustomerDealListState extends State<CustomerDealList> {
     );
   }
 
-  Widget _buildHeader(String username) {
+  Widget _buildHeader(Map<String, dynamic> userData) {
+    String name =
+        "${userData['first_name'] ?? ''} ${userData['last_name'] ?? ''}".trim();
+    if (name.isEmpty) name = userData['username'] ?? "Skyport User";
+
     return SliverAppBar(
-      expandedHeight: 180,
+      expandedHeight: 220,
       backgroundColor: primaryDark,
       pinned: true,
-      elevation: 0,
       automaticallyImplyLeading: false,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.only(
-          bottomLeft: Radius.circular(35),
-          bottomRight: Radius.circular(35),
-        ),
-      ),
+          borderRadius: BorderRadius.vertical(bottom: Radius.circular(35))),
       flexibleSpace: FlexibleSpaceBar(
         background: SafeArea(
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 20),
+            padding: const EdgeInsets.symmetric(horizontal: 25),
             child: Row(
               children: [
-                Container(
-                  padding: const EdgeInsets.all(3),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: accentGold, width: 2),
-                  ),
-                  child: CircleAvatar(
-                    radius: 35,
-                    backgroundColor: Colors.grey[800],
-                    child: const Icon(Icons.person_outline, size: 40, color: Colors.white),
-                  ),
+                Stack(
+                  children: [
+                    _buildAvatar(userData['profile_picture']),
+                    Positioned(bottom: 0, right: 0, child: _buildCamBtn()),
+                  ],
                 ),
                 const SizedBox(width: 20),
                 Expanded(
@@ -137,39 +222,26 @@ class _CustomerDealListState extends State<CustomerDealList> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        username.toUpperCase(),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 22,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: -0.5,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: brandGreen.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(5),
-                        ),
-                        child: Text(
-                          "VERIFIED LEVEL 2 ✅",
+                      Text("Welcome back,",
                           style: TextStyle(
-                            color: brandGreen,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                      ),
+                              color: accentGold,
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold)),
+                      Text(name,
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 20,
+                              fontWeight: FontWeight.w900)),
+                      Text(userData['phone_number'] ?? "Add Phone",
+                          style: TextStyle(
+                              color: Colors.white.withOpacity(0.5),
+                              fontSize: 13)),
                     ],
                   ),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.power_settings_new, color: Colors.redAccent),
-                  onPressed: _handleLogout,
-                )
+                    icon: Icon(Icons.edit_note, color: accentGold, size: 30),
+                    onPressed: () => _showEditSheet(userData)),
               ],
             ),
           ),
@@ -178,101 +250,143 @@ class _CustomerDealListState extends State<CustomerDealList> {
     );
   }
 
-  Widget _buildListMenu() {
+  Widget _buildAvatar(String? url) {
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(color: accentGold, width: 2)),
+      child: CircleAvatar(
+        radius: 38,
+        backgroundColor: Colors.grey[800],
+        backgroundImage:
+            (url != null && url.isNotEmpty) ? NetworkImage(url) : null,
+        child: (url == null || url.isEmpty)
+            ? const Icon(Icons.person, size: 40, color: Colors.white)
+            : null,
+      ),
+    );
+  }
+
+  Widget _buildCamBtn() {
+    return GestureDetector(
+      onTap: _showPickOptions,
+      child: CircleAvatar(
+          radius: 14,
+          backgroundColor: accentGold,
+          child: const Icon(Icons.camera_alt, size: 14, color: Colors.black)),
+    );
+  }
+
+  Widget _buildListMenu(Map<String, dynamic> userData) {
     return Column(
       children: [
         const SizedBox(height: 20),
-        _buildSectionHeader("MANAGE ACTIVITIES"),
-        _profileOption(context, Icons.add_location_alt_rounded, "Post a New Trip", const PostTripPage(), accentGold),
-        _profileOption(context, Icons.local_shipping_rounded, "Request Item Shipping", const PostProductRequest(), Colors.blueAccent),
-        _profileOption(context, Icons.storefront_rounded, "Offer Item for Sale", const PostProductPage(), brandGreen),
-
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 25, vertical: 15),
-          child: Divider(thickness: 1, color: Color(0xFFE0E0E0)),
-        ),
-
-        _buildSectionHeader("ACCOUNT & SECURITY"),
-        _profileOption(context, Icons.inventory_2_rounded, "My Listings", const CustomerActivityList(), primaryDark),
-        _profileOption(context, Icons.verified_user_rounded, "Identity Verification", null, Colors.teal),
-        _profileOption(context, Icons.settings_suggest_rounded, "Account Settings", null, Colors.blueGrey),
-
+        _menuItem(Icons.flight_takeoff, "Post a New Trip", const PostTripPage(),
+            accentGold),
+        _menuItem(Icons.local_shipping, "Request Shipping",
+            const PostProductRequest(), Colors.blueAccent),
+        _menuItem(
+            Icons.sell, "Add Product", const ProductShowroom(), brandGreen),
+        const Divider(height: 40, indent: 25, endIndent: 25),
+        _menuItem(Icons.history, "My Listings", const CustomerActivityList(),
+            primaryDark),
+        _menuItem(Icons.logout, "Logout", null, Colors.redAccent,
+            isLogout: true),
         const SizedBox(height: 40),
-        _buildFooter(),
+        const Text("SKYPORT v1.0.0",
+            style: TextStyle(fontSize: 10, color: Colors.grey)),
         const SizedBox(height: 40),
       ],
     );
   }
 
-  Widget _buildSectionHeader(String title) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(25, 10, 25, 12),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: Text(title, style: TextStyle(color: Colors.grey[400], fontWeight: FontWeight.w900, letterSpacing: 1.5, fontSize: 11)),
-      ),
+  Widget _menuItem(IconData icon, String label, Widget? dest, Color col,
+      {bool isLogout = false}) {
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 25, vertical: 4),
+      leading: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+              color: col.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(10)),
+          child: Icon(icon, color: col)),
+      title: Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
+      trailing: const Icon(Icons.chevron_right, size: 18),
+      onTap: isLogout
+          ? _handleLogout
+          : () {
+              if (dest != null)
+                Navigator.push(
+                    context, MaterialPageRoute(builder: (context) => dest));
+            },
     );
   }
 
-  Widget _profileOption(BuildContext context, IconData icon, String title, Widget? destination, Color iconColor) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 4),
-      child: Card(
-        elevation: 0,
-        color: Colors.white,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(15),
-          side: BorderSide(color: Colors.grey.shade100),
-        ),
-        child: ListTile(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
-          leading: Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-                color: iconColor.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12)
-            ),
-            child: Icon(icon, color: iconColor, size: 22),
-          ),
-          title: Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: Color(0xFF2D3436))),
-          trailing: const Icon(Icons.arrow_forward_ios, color: Colors.grey, size: 14),
-          onTap: () {
-            if (destination != null) {
-              Navigator.push(context, MaterialPageRoute(builder: (context) => destination));
-            }
-          },
-        ),
-      ),
-    );
+  // --- STANDARD HELPERS ---
+
+  void _showLoading() {
+    showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) =>
+            Center(child: CircularProgressIndicator(color: accentGold)));
   }
 
-  Widget _buildErrorState(String error) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.error_outline_rounded, size: 60, color: Colors.redAccent),
-          const SizedBox(height: 16),
-          Text("Something went wrong", style: TextStyle(fontWeight: FontWeight.bold, color: primaryDark)),
-          Text(error, style: const TextStyle(color: Colors.grey, fontSize: 12)),
-          const SizedBox(height: 20),
-          ElevatedButton(
-            onPressed: () => setState(() => _userDataFuture = _fetchUserData()),
-            child: const Text("Retry"),
-          ),
-          TextButton(onPressed: _handleLogout, child: const Text("Logout"))
-        ],
-      ),
-    );
+  void _showSnackBar(String m, Color c) {
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(m), backgroundColor: c));
   }
 
-  Widget _buildFooter() {
-    return Column(
-      children: [
-        Text("SKYPORT SYSTEM", style: TextStyle(color: Colors.grey[400], fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 2)),
-        const SizedBox(height: 4),
-        Text("Version 1.0.4", style: TextStyle(color: Colors.grey[500], fontSize: 12)),
-      ],
-    );
+  Future<void> _handleLogout() async {
+    await storage.deleteAll();
+    Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (context) => const LoginPage()),
+        (r) => false);
   }
+
+  void _showEditSheet(Map<String, dynamic> d) {
+    final f = TextEditingController(text: d['first_name']);
+    final l = TextEditingController(text: d['last_name']);
+    final p = TextEditingController(text: d['phone_number']);
+    showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        builder: (context) => Padding(
+            padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom,
+                left: 20,
+                right: 20,
+                top: 20),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              TextField(
+                  controller: f,
+                  decoration: const InputDecoration(labelText: "First Name")),
+              TextField(
+                  controller: l,
+                  decoration: const InputDecoration(labelText: "Last Name")),
+              TextField(
+                  controller: p,
+                  decoration: const InputDecoration(labelText: "Phone")),
+              const SizedBox(height: 20),
+              ElevatedButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    _updateProfileText(f.text, l.text, p.text);
+                  },
+                  child: const Text("Save")),
+              const SizedBox(height: 20)
+            ])));
+  }
+
+  Widget _buildErrorState(String e) => Center(
+          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+        const Icon(Icons.error),
+        Text(e),
+        TextButton(
+            onPressed: () => setState(() {
+                  _userDataFuture = _fetchUserData();
+                }),
+            child: const Text("Retry"))
+      ]));
 }

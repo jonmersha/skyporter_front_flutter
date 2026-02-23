@@ -1,30 +1,55 @@
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:skyporters/utils/api_constants.dart';
+import 'package:url_launcher/url_launcher.dart';
 
-class MyDealsPage extends StatelessWidget {
+class MyDealsPage extends StatefulWidget {
   const MyDealsPage({super.key});
 
-  // Brand Palette
-  final Color primaryDark = const Color(0xFF1A1A1A);
-  final Color accentGold = const Color(0xFFECAE0B);
-  final Color brandGreen = const Color(0xFF089348);
+  @override
+  State<MyDealsPage> createState() => _MyDealsPageState();
+}
 
-  Map<String, dynamic> _getStatusTheme(String status) {
-    switch (status) {
-      case "PENDING":
-        return {"color": Colors.orange.shade800, "icon": Icons.hourglass_top_rounded};
-      case "ACCEPTED":
-        return {"color": Colors.blue.shade700, "icon": Icons.handshake_rounded};
-      case "PURCHASED":
-        return {"color": Colors.purple.shade700, "icon": Icons.shopping_bag_rounded};
-      case "IN_TRANSIT":
-        return {"color": const Color(0xFFECAE0B), "icon": Icons.local_airport_rounded};
-      case "ARRIVED":
-        return {"color": Colors.teal.shade700, "icon": Icons.location_on_rounded};
-      case "COMPLETED":
-        return {"color": const Color(0xFF089348), "icon": Icons.verified_rounded};
-      default:
-        return {"color": Colors.grey, "icon": Icons.help_outline};
+class _MyDealsPageState extends State<MyDealsPage> {
+  final storage = const FlutterSecureStorage();
+  late Future<List<dynamic>> _enquiriesFuture;
+  String? _myUserId;
+
+  @override
+  void initState() {
+    super.initState();
+    _enquiriesFuture = _fetchEnquiries();
+  }
+
+  /// Fetches data and updates the local user ID for role logic
+  Future<List<dynamic>> _fetchEnquiries() async {
+    String? token = await storage.read(key: 'access');
+    _myUserId = await storage.read(key: 'user_id');
+
+    final response = await http.get(
+      Uri.parse("${ApiConstants.baseUrl}/api/enquiries/"),
+      headers: {
+        'accept': 'application/json',
+        'Authorization': 'JWT $token',
+      },
+    );
+
+    if (response.statusCode == 200) {
+      return json.decode(response.body);
+    } else {
+      throw Exception("Failed to load enquiries: ${response.statusCode}");
     }
+  }
+
+  /// Triggered by the RefreshIndicator or the AppBar button
+  Future<void> _handleRefresh() async {
+    setState(() {
+      _enquiriesFuture = _fetchEnquiries();
+    });
+    // Wait for the future to complete so the refresh spinner disappears correctly
+    await _enquiriesFuture;
   }
 
   @override
@@ -32,161 +57,202 @@ class MyDealsPage extends StatelessWidget {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7F9),
       appBar: AppBar(
+        backgroundColor: const Color(0xFF1A1A1A),
         elevation: 0,
-        backgroundColor: primaryDark,
-        title: const Text("My Deals",
-            style: TextStyle(fontWeight: FontWeight.w900, fontSize: 22, color: Colors.white)),
+        title: const Text(
+          "My Enquiries",
+          style: TextStyle(fontWeight: FontWeight.w900, color: Colors.white),
+        ),
         actions: [
-          IconButton(onPressed: () {}, icon: const Icon(Icons.filter_list_rounded, color: Colors.white)),
+          IconButton(
+            icon: const Icon(Icons.refresh, color: Colors.white),
+            onPressed: _handleRefresh,
+          )
         ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+      body: FutureBuilder<List<dynamic>>(
+        future: _enquiriesFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator(color: Color(0xFFECAE0B)));
+          }
+          if (snapshot.hasError) {
+            return _buildErrorState(snapshot.error.toString());
+          }
+          if (!snapshot.hasData || snapshot.data!.isEmpty) {
+            return _buildEmptyState();
+          }
+
+          final enquiries = snapshot.data!;
+
+          return RefreshIndicator(
+            color: const Color(0xFF089348),
+            onRefresh: _handleRefresh,
+            child: ListView.builder(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              itemCount: enquiries.length,
+              // Physics ensures it's always scrollable even if short (for pull-to-refresh)
+              physics: const AlwaysScrollableScrollPhysics(),
+              itemBuilder: (context, index) {
+                return _buildEnquiryCard(enquiries[index]);
+              },
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildEnquiryCard(Map<String, dynamic> data) {
+    final bool isIAmSender = data['sender'].toString() == _myUserId;
+    final bool isAccepted = data['is_accepted'] ?? false;
+    final Color statusColor = isAccepted ? const Color(0xFF089348) : Colors.orange.shade800;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          )
+        ],
+      ),
+      child: Column(
         children: [
-          _buildDealCard(
-            context,
-            title: "iPhone 15 Pro Max",
-            status: "IN_TRANSIT",
-            role: "SENDER",
-            partner: "Alex Rivera",
-            reward: 50.0,
+          // Role Header Strip
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+            decoration: BoxDecoration(
+              color: isIAmSender ? Colors.blue.withOpacity(0.1) : const Color(0xFF089348).withOpacity(0.1),
+              borderRadius: const BorderRadius.only(topLeft: Radius.circular(20), topRight: Radius.circular(20)),
+            ),
+            child: Text(
+              isIAmSender ? "SENT REQUEST" : "INCOMING ENQUIRY",
+              style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w900,
+                  color: isIAmSender ? Colors.blue.shade800 : const Color(0xFF089348)),
+            ),
           ),
-          _buildDealCard(
-            context,
-            title: "MacBook Pro M3",
-            status: "PENDING",
-            role: "TRAVELER",
-            partner: "Sarah J.",
-            reward: 150.0,
+
+          ListTile(
+            contentPadding: const EdgeInsets.fromLTRB(20, 10, 20, 5),
+            title: Text(
+              data['message'] ?? "No message detail",
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            subtitle: Text(
+              isIAmSender ? "To: ${data['receiver_full_name']}" : "From: ${data['sender_full_name']}",
+              style: TextStyle(color: Colors.grey.shade600),
+            ),
+            trailing: Icon(isAccepted ? Icons.check_circle : Icons.pending_actions, color: statusColor),
           ),
-          _buildDealCard(
-            context,
-            title: "Nike Air Jordan",
-            status: "COMPLETED",
-            role: "SENDER",
-            partner: "Michael K.",
-            reward: 30.0,
+
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                _buildInfoChip(isAccepted ? "ACCEPTED" : "PENDING", statusColor),
+                Text(
+                  data['created_at'].toString().substring(0, 10),
+                  style: const TextStyle(color: Colors.grey, fontSize: 12),
+                ),
+              ],
+            ),
           ),
+
+          const Divider(height: 1),
+
+          // Action Row
+          Padding(
+            padding: const EdgeInsets.all(10),
+            child: Row(
+              children: [
+                if (!isIAmSender && !isAccepted)
+                  Expanded(
+                    child: TextButton.icon(
+                      onPressed: () => _handleStatusUpdate(data['id'], true),
+                      icon: const Icon(Icons.check, size: 18),
+                      label: const Text("ACCEPT", style: TextStyle(fontWeight: FontWeight.bold)),
+                      style: TextButton.styleFrom(foregroundColor: const Color(0xFF089348)),
+                    ),
+                  ),
+                Expanded(
+                  child: TextButton.icon(
+                    onPressed: () => _launchPhone(data['receiver_phone']),
+                    icon: const Icon(Icons.phone, size: 18),
+                    label: const Text("CALL", style: TextStyle(fontWeight: FontWeight.bold)),
+                    style: TextButton.styleFrom(foregroundColor: Colors.blue.shade700),
+                  ),
+                ),
+              ],
+            ),
+          )
         ],
       ),
     );
   }
 
-  Widget _buildDealCard(
-      BuildContext context, {
-        required String title,
-        required String status,
-        required String role,
-        required String partner,
-        required double reward,
-      }) {
-    final theme = _getStatusTheme(status);
-    final isTraveler = role == "TRAVELER";
-
+  Widget _buildInfoChip(String text, Color color) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 15,
-            offset: const Offset(0, 8),
-          )
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+      child: Text(text, style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w900)),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return RefreshIndicator(
+      onRefresh: _handleRefresh,
+      child: ListView(
+        children: [
+          SizedBox(height: MediaQuery.of(context).size.height * 0.2),
+          const Center(child: Icon(Icons.inbox_outlined, size: 80, color: Colors.grey)),
+          const SizedBox(height: 16),
+          const Center(child: Text("No enquiries found", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold))),
+          const Center(child: Text("Pull down to refresh", style: TextStyle(color: Colors.grey, fontSize: 12))),
         ],
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(24),
+    );
+  }
+
+  Widget _buildErrorState(String error) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(20.0),
         child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Header Strip indicating Role
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 20),
-              color: isTraveler ? brandGreen.withOpacity(0.1) : Colors.blue.withOpacity(0.1),
-              child: Text(
-                isTraveler ? "YOUR EARNING OPPORTUNITY" : "YOUR SHIPMENT",
-                style: TextStyle(
-                    fontSize: 9,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1.2,
-                    color: isTraveler ? brandGreen : Colors.blue.shade800
-                ),
-              ),
-            ),
-            ListTile(
-              contentPadding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
-              leading: Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: theme['color'].withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(15),
-                ),
-                child: Icon(theme['icon'], color: theme['color'], size: 28),
-              ),
-              title: Text(title,
-                  style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 17, color: Color(0xFF2D3436))),
-              subtitle: Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Text(
-                  isTraveler ? "Carrying for $partner" : "Handled by $partner",
-                  style: TextStyle(color: Colors.grey.shade600, fontWeight: FontWeight.w500),
-                ),
-              ),
-            ),
-
-            // Middle Progress Indicator Bar (Subtle)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Row(
-                children: [
-                  Expanded(child: Container(height: 4, decoration: BoxDecoration(color: theme['color'], borderRadius: BorderRadius.circular(2)))),
-                  const SizedBox(width: 8),
-                  Text(status.replaceAll('_', ' '),
-                      style: TextStyle(color: theme['color'], fontWeight: FontWeight.w900, fontSize: 10)),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 16),
-            const Divider(height: 1, thickness: 1, indent: 20, endIndent: 20),
-
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(isTraveler ? "YOU EARN" : "FEE PAID",
-                          style: const TextStyle(color: Colors.grey, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
-                      const SizedBox(height: 2),
-                      Text("\$${reward.toStringAsFixed(2)}",
-                          style: TextStyle(fontWeight: FontWeight.w900, fontSize: 22, color: brandGreen)),
-                    ],
-                  ),
-                  ElevatedButton(
-                    onPressed: () {},
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: primaryDark,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                    ),
-                    child: Text(
-                      isTraveler ? "UPDATE" : "DETAILS",
-                      style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12, letterSpacing: 1),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            const Icon(Icons.error_outline, color: Colors.red, size: 40),
+            const SizedBox(height: 10),
+            Text("Connection Error: $error", textAlign: TextAlign.center),
+            TextButton(onPressed: _handleRefresh, child: const Text("Retry")),
           ],
         ),
       ),
     );
+  }
+
+  void _launchPhone(String? phone) async {
+    if (phone == null || phone.isEmpty) return;
+    final Uri url = Uri.parse('tel:$phone');
+    if (!await launchUrl(url)) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Could not open dialer")));
+    }
+  }
+
+  Future<void> _handleStatusUpdate(int id, bool accept) async {
+    // Logic for PATCHing would go here
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Processing enquiry #$id...")));
+    // Re-fetch data after update
+    _handleRefresh();
   }
 }

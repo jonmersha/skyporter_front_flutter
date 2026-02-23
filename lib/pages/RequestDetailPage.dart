@@ -34,7 +34,7 @@ class _RequestDetailPageState extends State<RequestDetailPage> {
           "Accept": "application/json",
         },
         body: jsonEncode({
-          "receiver": widget.request.customer, // The User ID from model
+         // "receiver": widget.request.customer, // The User ID from model
           "request": widget.request.id, // The Request ID from model
           "trip": null, // Explicitly null per your model
           "product": null, // Explicitly null per your model
@@ -186,7 +186,7 @@ class _RequestDetailPageState extends State<RequestDetailPage> {
                   "Reward",
                   "\$${widget.request.budget.toStringAsFixed(0)}",
                   Colors.greenAccent),
-              _heroItem("Timeline", widget.request.timelineStatus,
+              _heroItem("Timeline", widget.request.preferredDeliveryDate,
                   Colors.orangeAccent),
             ],
           ),

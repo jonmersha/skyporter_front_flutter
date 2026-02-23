@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:flutter_secure_storage/flutter_secure_storage.dart'; // Added
 import 'package:skyporters/models/Trip.dart';
 import 'package:skyporters/pages/TravelDetailsPage.dart';
 import 'package:skyporters/utils/api_constants.dart';
@@ -15,14 +16,15 @@ class TripList extends StatefulWidget {
 }
 
 class _TripListState extends State<TripList> {
+  final storage = const FlutterSecureStorage(); // Added
   List<Trip> trips = [];
   bool isLoading = true;
   String query = "";
+  String? currentUserId; // Added to track local user
 
-  // Defining the brand palette locally for consistency
-  final Color primaryNavy = const Color(0xFF1A1A1A); // Matching the Card Footer
-  final Color accentGold = const Color(0xFFECAE0B);  // Matching Departure
-  final Color brandGreen = const Color(0xFF089348);  // Matching Arrival
+  final Color primaryNavy = const Color(0xFF1A1A1A);
+  final Color accentGold = const Color(0xFFECAE0B);
+  final Color brandGreen = const Color(0xFF089348);
 
   @override
   void initState() {
@@ -35,6 +37,9 @@ class _TripListState extends State<TripList> {
     setState(() => isLoading = true);
 
     try {
+      // 1. Get the current user's ID to filter out their own trips
+      currentUserId = await storage.read(key: 'user_id');
+
       final response = await http.get(
         Uri.parse("${ApiConstants.baseUrl}/api/trips/"),
         headers: {
@@ -67,21 +72,14 @@ class _TripListState extends State<TripList> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // Light grey background makes the white cards "pop"
       backgroundColor: const Color(0xFFF5F7F9),
       appBar: AppBar(
         elevation: 0,
-        centerTitle: false,
         backgroundColor: primaryNavy,
-        title: const Text(
-            "Marketplace",
-            style: TextStyle(fontWeight: FontWeight.w900, color: Colors.white, fontSize: 24)
-        ),
+        title: const Text("Marketplace",
+            style: TextStyle(fontWeight: FontWeight.w900, color: Colors.white, fontSize: 24)),
         actions: [
-          IconButton(
-              onPressed: _fetchData,
-              icon: const Icon(Icons.refresh_rounded, color: Colors.white)
-          ),
+          IconButton(onPressed: _fetchData, icon: const Icon(Icons.refresh_rounded, color: Colors.white)),
           const SizedBox(width: 8),
         ],
       ),
@@ -103,74 +101,42 @@ class _TripListState extends State<TripList> {
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
       decoration: BoxDecoration(
         color: primaryNavy,
-        borderRadius: const BorderRadius.only(
-          bottomLeft: Radius.circular(30),
-          bottomRight: Radius.circular(30),
-        ),
+        borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(30), bottomRight: Radius.circular(30)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Padding(
-            padding: EdgeInsets.only(left: 4, bottom: 8),
-            child: Text(
-              "Find a traveler",
-              style: TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w600),
-            ),
-          ),
-          TextField(
-            onChanged: (v) => setState(() => query = v),
-            style: const TextStyle(color: Colors.black87),
-            decoration: InputDecoration(
-              hintText: "Enter destination city...",
-              hintStyle: TextStyle(color: Colors.grey[400], fontSize: 15),
-              prefixIcon: Icon(Icons.search_rounded, color: accentGold),
-              filled: true,
-              fillColor: Colors.white,
-              contentPadding: const EdgeInsets.symmetric(vertical: 12),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: BorderSide.none,
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: BorderSide.none,
-              ),
-            ),
-          ),
-        ],
+      child: TextField(
+        onChanged: (v) => setState(() => query = v),
+        decoration: InputDecoration(
+          hintText: "Enter destination city...",
+          prefixIcon: Icon(Icons.search_rounded, color: accentGold),
+          filled: true,
+          fillColor: Colors.white,
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+        ),
       ),
     );
   }
 
   Widget _buildTripsList() {
-    final filteredTrips = trips.where((t) =>
-    t.destinationCity.toLowerCase().contains(query.toLowerCase()) ||
-        t.departureCity.toLowerCase().contains(query.toLowerCase())
-    ).toList();
+    // UPDATED FILTER: Exclude trips where travelerId matches currentUserId
+    final filteredTrips = trips.where((t) {
+      final matchesSearch = t.destinationCity.toLowerCase().contains(query.toLowerCase()) ||
+          t.departureCity.toLowerCase().contains(query.toLowerCase());
+
+      // Safety check: Don't show the user's own trips
+      final isNotMine = t.travelerId.toString() != currentUserId;
+
+      return matchesSearch && isNotMine;
+    }).toList();
 
     if (filteredTrips.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Using a colored icon for empty state
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(color: Colors.grey[200], shape: BoxShape.circle),
-              child: Icon(Icons.map_outlined, size: 60, color: Colors.grey[400]),
-            ),
-            const SizedBox(height: 20),
-            Text(
-                "No routes found",
-                style: TextStyle(color: Colors.grey[800], fontSize: 18, fontWeight: FontWeight.w900)
-            ),
-            const SizedBox(height: 8),
-            TextButton.icon(
-                onPressed: () => setState(() => query = ""),
-                icon: Icon(Icons.backspace_outlined, size: 16, color: brandGreen),
-                label: Text("Clear Search", style: TextStyle(color: brandGreen, fontWeight: FontWeight.bold))
-            )
+            Icon(Icons.map_outlined, size: 60, color: Colors.grey[400]),
+            const SizedBox(height: 16),
+            const Text("No available trips found",
+                style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
           ],
         ),
       );

@@ -10,7 +10,7 @@ import 'package:skyporters/models/travler_product.dart';
 // Utils & Pages
 import 'package:skyporters/utils/api_constants.dart';
 import 'package:skyporters/pages/RequestDetailPage.dart';
-import 'package:skyporters/pages/post_request_page.dart';
+import 'package:skyporters/pages/profile/post_request_page.dart';
 
 // Widgets
 import 'package:skyporters/widgets/customer_request_card.dart';

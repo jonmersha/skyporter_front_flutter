@@ -58,7 +58,7 @@ class GridItemCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    journey.travelerName, // Updated from personName
+                    journey.travelerFullName, // Updated from personName
                     style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
